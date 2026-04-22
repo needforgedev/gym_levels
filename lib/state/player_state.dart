@@ -13,4 +13,9 @@ class PlayerState extends ChangeNotifier {
     xpCurrent = (xpCurrent + amount).clamp(0, xpMax);
     notifyListeners();
   }
+
+  void setDisplayName(String name) {
+    playerName = name;
+    notifyListeners();
+  }
 }

@@ -9,6 +9,7 @@ import 'screens/level_up_screen.dart';
 import 'screens/objectives_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/quests_screen.dart';
+import 'screens/registration_screen.dart';
 import 'screens/streak_milestone_screen.dart';
 import 'screens/streak_screen.dart';
 import 'screens/welcome_screen.dart';
@@ -18,6 +19,7 @@ final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
     GoRoute(path: '/', builder: (_, _) => const WelcomeScreen()),
+    GoRoute(path: '/register', builder: (_, _) => const RegistrationScreen()),
     GoRoute(
       path: '/calibrating',
       builder: (ctx, _) => CalibratingScreen(

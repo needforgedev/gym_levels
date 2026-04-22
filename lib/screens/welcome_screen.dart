@@ -88,7 +88,7 @@ class WelcomeScreen extends StatelessWidget {
                     const SizedBox(height: AppSpace.s4),
                     PrimaryButton(
                       label: 'BEGIN REGISTRATION',
-                      onTap: () => context.go('/calibrating'),
+                      onTap: () => context.go('/register'),
                     ),
                     const SizedBox(height: AppSpace.s3),
                     GhostButton(

@@ -181,7 +181,7 @@ Current state: 5/21 screens built (Welcome, Objectives, Experience, Attributes, 
 - [ ] Slide 2 — Progression System hype
 
 ### 1.5b Section 1 — Player Registration (teal)
-- [ ] Screen 3 — Display name text input
+- [x] Screen 3 — Display name text input (UI-only; writes to in-memory `PlayerState`; SQLite wiring in Phase 1.6)
 - [ ] Screen 4 — Age slider 16–80
 - [ ] Screen 5 — Height slider + CM/FT-IN toggle
 

@@ -33,7 +33,7 @@ class _ObjectivesScreenState extends State<ObjectivesScreen> {
       kicker: 'MISSION OBJECTIVES',
       subtitle: '…define primary combat doctrine.',
       nextEnabled: _selected.isNotEmpty,
-      onBack: () => context.go('/'),
+      onBack: () => context.go('/register'),
       onNext: () => context.go('/experience'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
