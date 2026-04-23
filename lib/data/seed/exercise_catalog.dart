@@ -1,0 +1,577 @@
+import '../models/exercise.dart';
+
+// PRD Appendix A — 80-exercise seed catalog.
+//
+// Breakdown:
+//   Chest 12, Back 12, Shoulders 8, Biceps 6, Triceps 6,
+//   Core 8, Quads 10, Hamstrings 6, Glutes 6, Calves 6.
+//
+// Conventions:
+// - `baseXp` = 5 for compound lifts, 3 for accessories (PRD §12).
+// - Muscle keys match the ones used across the UI (home, profile, muscle figure).
+// - Equipment keys match PRD §8 screen 10 (barbell, dumbbell, kettlebell,
+//   resistance_band, pullup_bar, cable_machine, bench, squat_rack, bodyweight).
+// - `demoVideoUrl` is intentionally null in the offline build (PRD §11.6).
+
+const exerciseCatalog = <Exercise>[
+  // ───────── Chest (12) ─────────
+  Exercise(
+    name: 'Barbell Bench Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders', 'triceps'],
+    equipment: ['barbell', 'bench'],
+    baseXp: 5,
+    cueText: 'Shoulder blades tucked, bar to mid-chest, elbows ~45°.',
+  ),
+  Exercise(
+    name: 'Incline Barbell Bench Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders', 'triceps'],
+    equipment: ['barbell', 'bench'],
+    baseXp: 5,
+    cueText: 'Bench at 30°. Bar touches upper chest.',
+  ),
+  Exercise(
+    name: 'Decline Barbell Bench Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['triceps'],
+    equipment: ['barbell', 'bench'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Dumbbell Bench Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders', 'triceps'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Incline Dumbbell Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders', 'triceps'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Dumbbell Fly',
+    primaryMuscle: 'chest',
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+    cueText: 'Soft bend in the elbows; stretch, squeeze.',
+  ),
+  Exercise(
+    name: 'Cable Fly',
+    primaryMuscle: 'chest',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Cable Crossover',
+    primaryMuscle: 'chest',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Push-Up',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders', 'triceps', 'core'],
+    equipment: ['bodyweight'],
+    baseXp: 3,
+    cueText: 'Straight line from head to heels; elbows track back.',
+  ),
+  Exercise(
+    name: 'Dips',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['triceps', 'shoulders'],
+    equipment: ['bodyweight'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Machine Chest Press',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['triceps'],
+    equipment: ['cable_machine'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Pec Deck',
+    primaryMuscle: 'chest',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+
+  // ───────── Back (12) ─────────
+  Exercise(
+    name: 'Deadlift',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['hamstrings', 'glutes', 'core'],
+    equipment: ['barbell'],
+    baseXp: 5,
+    cueText: 'Hips hinge, lats tight, bar drags the shin.',
+  ),
+  Exercise(
+    name: 'Bent-Over Barbell Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['barbell'],
+    baseXp: 5,
+    cueText: 'Torso ~45°, pull bar to lower sternum.',
+  ),
+  Exercise(
+    name: 'Pendlay Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['barbell'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'T-Bar Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['barbell'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Dumbbell Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Pull-Up',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['pullup_bar', 'bodyweight'],
+    baseXp: 5,
+    cueText: 'Chest up, pull elbows down-and-back.',
+  ),
+  Exercise(
+    name: 'Chin-Up',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['pullup_bar', 'bodyweight'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Lat Pulldown',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['cable_machine'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Seated Cable Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['cable_machine'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Face Pull',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['shoulders'],
+    equipment: ['cable_machine'],
+    baseXp: 3,
+    cueText: 'Rope to forehead, high elbows, external rotation.',
+  ),
+  Exercise(
+    name: 'Single-Arm Cable Row',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['biceps'],
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Back Extension',
+    primaryMuscle: 'back',
+    secondaryMuscles: ['hamstrings', 'glutes'],
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+
+  // ───────── Shoulders (8) ─────────
+  Exercise(
+    name: 'Overhead Press',
+    primaryMuscle: 'shoulders',
+    secondaryMuscles: ['triceps'],
+    equipment: ['barbell', 'squat_rack'],
+    baseXp: 5,
+    cueText: 'Glutes squeezed, ribs down, press to lockout overhead.',
+  ),
+  Exercise(
+    name: 'Seated Dumbbell Press',
+    primaryMuscle: 'shoulders',
+    secondaryMuscles: ['triceps'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Arnold Press',
+    primaryMuscle: 'shoulders',
+    secondaryMuscles: ['triceps'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Lateral Raise',
+    primaryMuscle: 'shoulders',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+    cueText: 'Lead with the elbow, soft bend, stop at shoulder height.',
+  ),
+  Exercise(
+    name: 'Front Raise',
+    primaryMuscle: 'shoulders',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Rear Delt Fly',
+    primaryMuscle: 'shoulders',
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Upright Row',
+    primaryMuscle: 'shoulders',
+    secondaryMuscles: ['biceps'],
+    equipment: ['barbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Cable Lateral Raise',
+    primaryMuscle: 'shoulders',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+
+  // ───────── Biceps (6) ─────────
+  Exercise(
+    name: 'Barbell Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['barbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Dumbbell Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Hammer Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+    cueText: 'Neutral grip; thumbs up throughout.',
+  ),
+  Exercise(
+    name: 'Preacher Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['barbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Cable Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Concentration Curl',
+    primaryMuscle: 'biceps',
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+  ),
+
+  // ───────── Triceps (6) ─────────
+  Exercise(
+    name: 'Close-Grip Bench Press',
+    primaryMuscle: 'triceps',
+    secondaryMuscles: ['chest', 'shoulders'],
+    equipment: ['barbell', 'bench'],
+    baseXp: 5,
+    cueText: 'Shoulder-width grip, elbows tucked.',
+  ),
+  Exercise(
+    name: 'Tricep Pushdown',
+    primaryMuscle: 'triceps',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Skull Crusher',
+    primaryMuscle: 'triceps',
+    equipment: ['barbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Overhead Tricep Extension',
+    primaryMuscle: 'triceps',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Tricep Dip',
+    primaryMuscle: 'triceps',
+    secondaryMuscles: ['chest', 'shoulders'],
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Tricep Kickback',
+    primaryMuscle: 'triceps',
+    equipment: ['dumbbell'],
+    baseXp: 3,
+  ),
+
+  // ───────── Core (8) ─────────
+  Exercise(
+    name: 'Plank',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+    cueText: 'Hips level, glutes + quads tight, breathe.',
+  ),
+  Exercise(
+    name: 'Side Plank',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Crunch',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Hanging Leg Raise',
+    primaryMuscle: 'core',
+    equipment: ['pullup_bar', 'bodyweight'],
+    baseXp: 3,
+    cueText: 'No swing; lift legs with control.',
+  ),
+  Exercise(
+    name: 'Russian Twist',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Ab Wheel Rollout',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Cable Woodchopper',
+    primaryMuscle: 'core',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Dead Bug',
+    primaryMuscle: 'core',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+    cueText: 'Lower back glued to floor; opposite arm + leg.',
+  ),
+
+  // ───────── Quads (10) ─────────
+  Exercise(
+    name: 'Back Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes', 'hamstrings', 'core'],
+    equipment: ['barbell', 'squat_rack'],
+    baseXp: 5,
+    cueText: 'Brace, sit between heels, knees track toes.',
+  ),
+  Exercise(
+    name: 'Front Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes', 'core'],
+    equipment: ['barbell', 'squat_rack'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Box Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes'],
+    equipment: ['barbell', 'squat_rack'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Goblet Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes', 'core'],
+    equipment: ['dumbbell', 'kettlebell'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Leg Press',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes'],
+    equipment: ['cable_machine'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Hack Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes'],
+    equipment: ['cable_machine'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Walking Lunge',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes', 'hamstrings'],
+    equipment: ['dumbbell', 'bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Bulgarian Split Squat',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Step-Up',
+    primaryMuscle: 'quads',
+    secondaryMuscles: ['glutes'],
+    equipment: ['dumbbell', 'bench'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Leg Extension',
+    primaryMuscle: 'quads',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+
+  // ───────── Hamstrings (6) ─────────
+  Exercise(
+    name: 'Romanian Deadlift',
+    primaryMuscle: 'hamstrings',
+    secondaryMuscles: ['glutes', 'back'],
+    equipment: ['barbell'],
+    baseXp: 5,
+    cueText: 'Hips push back, soft knees, feel hamstring stretch.',
+  ),
+  Exercise(
+    name: 'Stiff-Leg Deadlift',
+    primaryMuscle: 'hamstrings',
+    secondaryMuscles: ['glutes', 'back'],
+    equipment: ['barbell'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Good Morning',
+    primaryMuscle: 'hamstrings',
+    secondaryMuscles: ['glutes', 'back'],
+    equipment: ['barbell', 'squat_rack'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Lying Leg Curl',
+    primaryMuscle: 'hamstrings',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Seated Leg Curl',
+    primaryMuscle: 'hamstrings',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Nordic Curl',
+    primaryMuscle: 'hamstrings',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+
+  // ───────── Glutes (6) ─────────
+  Exercise(
+    name: 'Hip Thrust',
+    primaryMuscle: 'glutes',
+    secondaryMuscles: ['hamstrings'],
+    equipment: ['barbell', 'bench'],
+    baseXp: 5,
+    cueText: 'Ribs down, chin tucked, squeeze at the top.',
+  ),
+  Exercise(
+    name: 'Glute Bridge',
+    primaryMuscle: 'glutes',
+    secondaryMuscles: ['hamstrings'],
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Cable Glute Kickback',
+    primaryMuscle: 'glutes',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Sumo Deadlift',
+    primaryMuscle: 'glutes',
+    secondaryMuscles: ['quads', 'back', 'hamstrings'],
+    equipment: ['barbell'],
+    baseXp: 5,
+  ),
+  Exercise(
+    name: 'Reverse Hyperextension',
+    primaryMuscle: 'glutes',
+    secondaryMuscles: ['hamstrings', 'back'],
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Frog Pump',
+    primaryMuscle: 'glutes',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+
+  // ───────── Calves (6) ─────────
+  Exercise(
+    name: 'Standing Calf Raise',
+    primaryMuscle: 'calves',
+    equipment: ['barbell', 'cable_machine'],
+    baseXp: 3,
+    cueText: 'Full stretch at bottom, pause at top.',
+  ),
+  Exercise(
+    name: 'Seated Calf Raise',
+    primaryMuscle: 'calves',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Donkey Calf Raise',
+    primaryMuscle: 'calves',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Single-Leg Calf Raise',
+    primaryMuscle: 'calves',
+    equipment: ['bodyweight', 'dumbbell'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Leg Press Calf Raise',
+    primaryMuscle: 'calves',
+    equipment: ['cable_machine'],
+    baseXp: 3,
+  ),
+  Exercise(
+    name: 'Jump Rope',
+    primaryMuscle: 'calves',
+    equipment: ['bodyweight'],
+    baseXp: 3,
+  ),
+];

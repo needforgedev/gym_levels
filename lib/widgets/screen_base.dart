@@ -15,11 +15,18 @@ class ScreenBase extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: background,
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox.expand(child: child),
+    // `Material(type: transparency)` gives every child a Material ancestor
+    // without painting anything. Required by `Slider`, `Switch`, `TextField`,
+    // `InkWell`, etc. — none of our screens wrap in Scaffold, so without this
+    // those widgets throw "No Material widget found" at render time.
+    return Material(
+      type: MaterialType.transparency,
+      child: ColoredBox(
+        color: background,
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox.expand(child: child),
+        ),
       ),
     );
   }

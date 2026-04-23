@@ -1,0 +1,43 @@
+import 'package:sqflite/sqflite.dart';
+
+import '../app_db.dart';
+import '../models/player_class_row.dart';
+import '../schema.dart';
+import '_now.dart';
+
+/// PRD §9A.7 — player class derivation + reassignment.
+class PlayerClassService {
+  PlayerClassService._();
+
+  static Future<PlayerClassRow?> get() async {
+    final db = await AppDb.instance;
+    final rows = await db.query(T.playerClass,
+        where: '${CPlayerClass.userId} = ?', whereArgs: [1], limit: 1);
+    return rows.isEmpty ? null : PlayerClassRow.fromRow(rows.first);
+  }
+
+  /// Assign or reassign the player class. Appends the previous class to
+  /// `evolution_history` for audit.
+  static Future<void> assign(String classKey) async {
+    final db = await AppDb.instance;
+    final now = nowSeconds();
+    final existing = await get();
+
+    final history = [...?existing?.evolutionHistory];
+    if (existing != null && existing.classKey != classKey) {
+      history.add('${existing.classKey}@${existing.lastChangedAt}');
+    }
+
+    await db.insert(
+      T.playerClass,
+      PlayerClassRow(
+        userId: 1,
+        classKey: classKey,
+        assignedAt: existing?.assignedAt ?? now,
+        lastChangedAt: now,
+        evolutionHistory: history,
+      ).toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+}

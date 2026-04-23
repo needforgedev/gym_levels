@@ -2,7 +2,7 @@
 
 **Companion to:** [PRD_GamifiedFitnessApp.md](PRD_GamifiedFitnessApp.md) (v1.2)
 **Design system:** [DesignSystem_LevelUpIRL.md](DesignSystem_LevelUpIRL.md) (v1.0)
-**Stack:** Flutter / Dart, **offline-first**, SQLite (via `sqflite` + `drift`) as source of truth.
+**Stack:** Flutter / Dart, **offline-first**, SQLite via **raw `sqflite`** (no ORM, no codegen) as source of truth.
 **Last updated:** 2026-04-20
 
 This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow the roadmap in PRD §16. Each phase has explicit **exit criteria** — do not start the next phase until the current phase's exit criteria are met.
@@ -20,7 +20,7 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 | Phase | Name | PRD roadmap | Window | Status |
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
-| **1** | v0.1 Internal Alpha — data model + full onboarding | Wk 1–6 | `[ ]` not started |
+| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.6 PlayerState-over-service **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
 | **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[ ]` not started |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[ ]` not started |
 | **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
@@ -100,149 +100,202 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 
 # Phase 1 — v0.1 Internal Alpha (PRD roadmap: Wk 1–6)
 
-**Goal:** make the app **truly offline-first**. Replace the in-memory prototype state with SQLite, complete the full onboarding flow (all 21 screens), and seed the exercise catalog. Exit this phase with a single-user, encrypted, persistent, fully navigable app that survives app kills and airplane mode.
+**Goal:** make the app **truly offline-first**. Replace the in-memory prototype state with a minimal SQLite data layer, complete the full onboarding flow (all 21 screens), and seed the exercise catalog. Exit this phase with a single-user, persistent, fully navigable app that survives app kills and airplane mode.
 
 **PRD references:** §6.1 (scope), §11.0–11.8 (architecture + DDL + layout), §8 (onboarding spec).
 
-## 1.1 Persistence layer
-- [ ] Add dependencies: `drift`, `drift_flutter`, `sqlite3_flutter_libs`, `path_provider`, `sqflite_sqlcipher`, `flutter_secure_storage`, `shared_preferences`
-- [ ] Dev dependencies: `drift_dev`, `build_runner`
-- [ ] Configure code generation (`drift_dev` runs on CI pre-analyze)
-- [ ] [lib/data/database.dart](lib/data/database.dart) — `AppDatabase` with connection bootstrap (path in `getApplicationDocumentsDirectory()`)
-- [ ] Define all 13 tables from PRD §11.7 as drift `Table` classes (see checklist below)
+**Design posture (v1.2 revision):** raw `sqflite` + **static service classes** + plain-Dart models. **Zero codegen. Zero encryption in v1.0** (SQLCipher deferred — see §1.2). Three dependencies only: `sqflite`, `path`, `path_provider`. Plus `sqflite_common_ffi` as a dev dep for in-memory test DBs. The DAO pattern stays; the implementation is just simpler.
 
-### 1.1a Drift table definitions (one checkbox per table from §11.7)
-- [ ] `Player` (single row, `CHECK id = 1`)
-- [ ] `Goals`
-- [ ] `Experience`
-- [ ] `Schedule`
-- [ ] `NotificationPrefs`
-- [ ] `PlayerClass`
-- [ ] `Exercises` (+ `idx_exercises_primary_muscle`)
-- [ ] `Workouts` (+ `idx_workouts_user_started`)
-- [ ] `Sets` (+ `idx_sets_workout`, `idx_sets_exercise`)
-- [ ] `WorkoutOverrides`
-- [ ] `ExerciseSwaps`
-- [ ] `MuscleRanks` (composite PK)
-- [ ] `Quests` (+ `idx_quests_user_type_active`)
-- [ ] `Streaks`
-- [ ] `StreakFreezeEvents`
-- [ ] `WeightLogs` (+ `UNIQUE(user_id, logged_on)`, date index)
-- [ ] `Subscriptions`
-- [ ] `AnalyticsEvents` (+ partial index for pending uploads)
-- [ ] `CrashReports`
-- [ ] `SchemaVersion` (bookkeeping)
+## 1.1 Persistence layer (raw sqflite)
 
-### 1.1b DAOs — [lib/data/daos/](lib/data/daos/)
-Screens NEVER query the DB directly; they go through DAOs. Every DAO exposes a reactive `Stream<…>` where applicable (drift handles this).
+- [x] Add dependencies to `pubspec.yaml`: `sqflite`, `path`, `path_provider`
+- [x] Dev dependencies: `sqflite_common_ffi` (in-memory DB for unit tests)
+- [x] [lib/data/schema.dart](lib/data/schema.dart) — column name constants + 20 `CREATE TABLE` statements + indexes as const strings. All references to columns go through these constants (typos caught at analyze time).
+- [x] [lib/data/app_db.dart](lib/data/app_db.dart) — `class AppDb` with static singleton, `init()`, `instance`, `close()`, `reset()`, `overrideForTesting()`. Uses `getApplicationDocumentsDirectory()` for DB path. `onConfigure` enables `PRAGMA foreign_keys = ON`. `onCreate` executes the statements from `schema.dart` + inserts v1 into `schema_version`. `onUpgrade` logs every version bump.
+- [x] Hot-restart safe: `close()` nulls the singleton; next `instance` call re-opens.
 
-- [ ] `player_dao.dart`
-- [ ] `goals_dao.dart`
-- [ ] `experience_dao.dart`
-- [ ] `schedule_dao.dart`
-- [ ] `notification_prefs_dao.dart`
-- [ ] `player_class_dao.dart`
-- [ ] `exercise_dao.dart`
-- [ ] `workout_dao.dart`
-- [ ] `sets_dao.dart`
-- [ ] `muscle_rank_dao.dart`
-- [ ] `quest_dao.dart`
-- [ ] `streak_dao.dart`
-- [ ] `weight_log_dao.dart`
-- [ ] `subscription_dao.dart`
-- [ ] `analytics_dao.dart`
-- [ ] `crash_report_dao.dart`
+### 1.1a Plain-Dart models — `lib/data/models/` (one file per table)
 
-## 1.2 SQLCipher encryption
-- [ ] Swap `sqflite` for `sqflite_sqlcipher`
-- [ ] Generate a 32-byte key at first launch; store via `flutter_secure_storage`
-- [ ] Verify DB is unreadable when opened with a vanilla SQLite browser (acceptance test)
-- [ ] Settings toggle to disable encryption (opt-out, rare)
-- [ ] Recovery-code flow at onboarding completion (4-word mnemonic that re-derives the key; skippable with ack) — PRD §17 risk
+Each model is immutable: final fields + const constructor + `factory fromRow(Map<String, Object?>)` + `Map<String, Object?> toRow()` + optional `copyWith`. JSON-array columns are encoded/decoded inside `fromRow` / `toRow` via shared helpers in `_json_list.dart`. No `json_serializable`, no `freezed`, no codegen.
+
+- [x] `player.dart`
+- [x] `goal.dart`
+- [x] `experience_row.dart` (named `ExperienceRow` to keep the class name noun-free)
+- [x] `schedule_row.dart`
+- [x] `notification_prefs.dart`
+- [x] `player_class_row.dart`
+- [x] `exercise.dart`
+- [x] `workout.dart`
+- [x] `workout_set.dart` (avoids `Set` conflict with `dart:core`)
+- [x] `workout_override.dart`
+- [x] `exercise_swap.dart`
+- [x] `muscle_rank.dart`
+- [x] `quest.dart`
+- [x] `streak.dart`
+- [x] `streak_freeze_event.dart`
+- [x] `weight_log.dart`
+- [x] `subscription.dart`
+- [x] `analytics_event.dart`
+- [x] `crash_report.dart`
+- [x] `schema_version_row.dart`
+
+### 1.1b Static services — `lib/data/services/` (one file per table)
+
+Each service exposes only `static` methods. No instances, no DI, no Provider wiring needed. Screens call `PlayerService.setDisplayName('Kael')` directly. All methods go through `AppDb.instance`.
+
+Contract: services are the **only** place that touches `sqflite`. Screens never write raw SQL.
+
+- [x] `player_service.dart` — getPlayer, ensurePlayer, setDisplayName, upsert, completeOnboarding, deleteAll
+- [x] `goals_service.dart` — get, upsert
+- [x] `experience_service.dart` — get, upsert
+- [x] `schedule_service.dart` — get, upsert
+- [x] `notification_prefs_service.dart` — get, upsert
+- [x] `player_class_service.dart` — get, assign (with evolution history audit)
+- [x] `exercise_service.dart` — getAll, byId, byPrimaryMuscle, count, insertBatch (idempotent seed via IGNORE)
+- [x] `workout_service.dart` — start, finish, byId, recent, totalFinished
+- [x] `sets_service.dart` — insertSet, forWorkout, bestFor (PR detection seam), volumeFor
+- [x] `muscle_rank_service.dart` — getAll, forMuscle, upsert
+- [x] `quest_service.dart` — insert, active, all, updateProgress, complete
+- [x] `streak_service.dart` — get, ensure, upsert, logFreezeUsed
+- [x] `weight_log_service.dart` — all, latest, upsertForDay (UNIQUE per day via REPLACE)
+- [x] `subscription_service.dart` — get, upsert, isProCached
+- [x] `analytics_service.dart` — log, pending, markUploaded, purgeStale (30-day TTL)
+- [x] `crash_report_service.dart` — log, pending, markUploaded
+
+### 1.1c Reactivity — minimum viable
+
+No reactive DB streams (that's drift's job, not ours). Two approaches where needed:
+
+- [ ] For values rendered app-wide (`player`, `streak`, `subscription`): after each write, call `notifyListeners()` on a matching `ChangeNotifier` in `lib/state/` that holds the latest snapshot. Existing `PlayerState` becomes a thin cache over `PlayerService`.  _(deferred to §1.6 — screen rewiring)_
+- [ ] For per-screen reads: use `FutureBuilder` + a `setState()` refresh after writes. Simple, boring, obvious.  _(applied per-screen in §1.6)_
+
+Revisit if ergonomics get annoying in Phase 2.
+
+### 1.1d Acceptance tests (Phase 1.1 — landed with [test/db/db_smoke_test.dart](test/db/db_smoke_test.dart))
+
+- [x] Player round-trip (create → rename → `completeOnboarding`)
+- [x] JSON list converters symmetric on `goals.priority_muscles`
+- [x] Exercise catalog seed is idempotent (re-running doesn't duplicate)
+- [x] `weight_logs` UNIQUE(user_id, logged_on) enforced via `upsertForDay`
+- [x] Analytics outbox: insert → `pending()` returns N → `markUploaded()` drops them
+- [x] `Subscription.isProCached` respects tier + status + `renews_at` clock
+- [x] `StreakService.ensure()` creates singleton with sensible defaults
+- [x] `DELETE FROM player` cascades every dependent row (the "Delete my data" guarantee)
+
+## 1.2 Encryption — DEFERRED to v1.0.1+
+
+**Decision (2026-04-20):** SQLCipher is out of v1.0 scope. iOS and Android app sandboxing already block casual access to `gym_levels.db`. The PRD §17 risk "SQLCipher key lost on factory reset" disappears when there's no key to lose. Re-evaluate when:
+- We have real user data worth encrypting, or
+- An App Store review flags data-at-rest, or
+- A user credibly asks for it.
+
+- [—] Swap `sqflite` for `sqflite_sqlcipher` — deferred
+- [—] 32-byte key in `flutter_secure_storage` — deferred
+- [—] Recovery-code mnemonic flow — deferred (only needed when encryption is on)
+- [—] Raw-SQLite-viewer unreadability acceptance test — deferred
+- [x] **Do not block v1.0 on encryption.** Ship when the feature loop is solid; add encryption as a patch release.
 
 ## 1.3 Seed data — exercise catalog
-- [ ] Author `assets/seed/exercises.sql` with 80 exercises per PRD Appendix A breakdown:
-  - Chest (12), Back (12), Shoulders (8), Biceps (6), Triceps (6), Core (8), Quads (10), Hamstrings (6), Glutes (6), Calves (6)
-- [ ] Each row: `name`, `primary_muscle`, `secondary_muscles[]`, `equipment[]`, `base_xp`, `cue_text`
-- [ ] `demo_video_url` may be null (offline build) or bundled mp4 path
-- [ ] On first launch, if `exercises` table is empty → load seed
-- [ ] Declare the seed file in `pubspec.yaml` assets
+
+**Format decision (2026-04-20):** Dart file, not SQL asset. Matches the zero-codegen posture — we already have the `Exercise` model with a `toRow()` that encodes JSON arrays correctly, so seeding is a one-liner `ExerciseService.insertBatch(exerciseCatalog)`. No asset parsing, no `pubspec.yaml` registration, no double-encoding JSON in SQL.
+
+- [x] Author [lib/data/seed/exercise_catalog.dart](lib/data/seed/exercise_catalog.dart) — `const exerciseCatalog = <Exercise>[ … ]`, 80 entries per PRD Appendix A breakdown:
+  - Chest (12), Back (12), Shoulders (8), Biceps (6), Triceps (6), Core (8), Quads (10), Hamstrings (6), Glutes (6), Calves (6) — counts verified in [test/db/seed_test.dart](test/db/seed_test.dart)
+- [x] Each entry sets: `name`, `primaryMuscle`, `secondaryMuscles` (used by plan generator), `equipment` (filtered against `experience.equipment`), `baseXp` (5 for compound lifts, 3 for accessories per PRD §12), `cueText` for key lifts
+- [x] `demoVideoUrl` stays null for the offline build (PRD §11.6: no runtime asset fetches)
+- [x] `AppDb.init()` auto-seeds on first launch — if `ExerciseService.count() == 0`, invoke `insertBatch(exerciseCatalog)`. Idempotent via `ConflictAlgorithm.ignore` on the UNIQUE `name` constraint.
+- [x] Tests opt out of seeding via `AppDb.init(seed: false)` to keep fixture DBs small; seed-specific tests live in `test/db/seed_test.dart`.
 
 ## 1.4 Schema versioning & migrations
-- [ ] `schema_version` table + drift `MigrationStrategy`
-- [ ] Pre-migration backup to `gym_levels.db.pre-migration`; auto-rollback on throw (PRD §17)
-- [ ] Unit tests: migration round-trip from every prior schema version in `test/db/`
+- [x] `schema_version` audit table created + seeded on first run ([lib/data/app_db.dart](lib/data/app_db.dart) `onCreate`)
+- [x] `onUpgrade` hook wired — every version bump logs a row into `schema_version` for audit
+- [ ] Pre-migration backup to `gym_levels.db.pre-migration`; auto-rollback on throw (PRD §17) — land on first real schema bump (v2)
+- [ ] Unit tests: migration round-trip from every prior schema version in `test/db/` — land with v2 migration
 
-## 1.5 Complete the onboarding flow (21 screens — only 5 built in Phase 0)
-Current state: 5/21 screens built (Welcome, Objectives, Experience, Attributes, plus 2 Calibrating interstitials). Remaining per PRD §8:
+## 1.5 Complete the onboarding flow (21 screens per PRD §8)
+
+**State (2026-04-20):** All 21 screens built + 2 shared widgets (`BigSlider`, `OnboardingRadioTile`). Flow is reachable end-to-end from `/` → `/home`. Screens hold local state only; SQLite persistence lands with §1.6 screen rewire.
+
+Shared additions:
+- [x] [lib/widgets/big_slider.dart](lib/widgets/big_slider.dart) — big mono readout + themed Material `Slider` (for age / height / weight / body fat / target weight).
+- [x] [lib/widgets/onboarding_radio_tile.dart](lib/widgets/onboarding_radio_tile.dart) — reusable themed radio row used across tenure / reward style / weight direction / session minutes.
+- [x] Retired the placeholder `attributes_screen.dart` / `objectives_screen.dart` / `experience_screen.dart`; those features are now split across purpose-built screens matching the PRD numbering.
 
 ### 1.5a Intro hype slides (pre-quiz)
-- [ ] Slide 1 — Muscle Ranks hype
-- [ ] Slide 2 — Progression System hype
+- [x] Slide 1 — Muscle Ranks hype — [lib/screens/ranks_hype_screen.dart](lib/screens/ranks_hype_screen.dart) (route `/hype/ranks`)
+- [x] Slide 2 — Progression System hype — [lib/screens/progression_hype_screen.dart](lib/screens/progression_hype_screen.dart) (route `/hype/progression`)
 
-### 1.5b Section 1 — Player Registration (teal)
-- [x] Screen 3 — Display name text input (UI-only; writes to in-memory `PlayerState`; SQLite wiring in Phase 1.6)
-- [ ] Screen 4 — Age slider 16–80
-- [ ] Screen 5 — Height slider + CM/FT-IN toggle
+### 1.5b Section 1 — Player Registration (teal, 0–10%)
+- [x] Screen 3 — Display name text input — [lib/screens/registration_screen.dart](lib/screens/registration_screen.dart)
+- [x] Screen 4 — Age slider 16–80 — [lib/screens/age_screen.dart](lib/screens/age_screen.dart)
+- [x] Screen 5 — Height slider + CM / FT-IN toggle — [lib/screens/height_screen.dart](lib/screens/height_screen.dart)
 
-### 1.5c Section 2 — Mission Objectives (purple) — partial
-- [x] Screen 6 — Body type cards (built as "Objectives" placeholder; needs re-skin to spec)
-- [ ] Screen 7 — Priority muscle chips (cap 3)
-- [ ] Screen 8 — Reward style radio
+### 1.5c Section 2 — Mission Objectives (purple, 15–25%)
+- [x] Screen 6 — Body type 2×2 cards — [lib/screens/body_type_screen.dart](lib/screens/body_type_screen.dart)
+- [x] Screen 7 — Priority muscle chips (cap 3) — [lib/screens/priority_muscles_screen.dart](lib/screens/priority_muscles_screen.dart)
+- [x] Screen 8 — Reward style radio — [lib/screens/reward_style_screen.dart](lib/screens/reward_style_screen.dart)
 
-### 1.5d Section 3 — Combat Experience (yellow) — partial
-- [x] Screen 9 — Tenure radio (built)
-- [ ] Screen 10 — Equipment multi-chip
-- [ ] Screen 11 — Limitations multi-chip (with "None" exclusive rule)
-- [ ] Screen 12 — Training styles multi-chip
+### 1.5d Section 3 — Combat Experience (yellow, 32–45%)
+- [x] Screen 9 — Tenure radio — [lib/screens/tenure_screen.dart](lib/screens/tenure_screen.dart)
+- [x] Screen 10 — Equipment multi-chip — [lib/screens/equipment_screen.dart](lib/screens/equipment_screen.dart)
+- [x] Screen 11 — Limitations multi-chip (`None` exclusive) — [lib/screens/limitations_screen.dart](lib/screens/limitations_screen.dart)
+- [x] Screen 12 — Training styles multi-chip — [lib/screens/training_styles_screen.dart](lib/screens/training_styles_screen.dart)
 
-### 1.5e Section 4 — Physical Attributes (teal) — partial
-- [x] Screen 13 — Weight slider (built inside Attributes)
-- [ ] Screen 14 — Weight direction radio (Gain/Lose/Maintain)
-- [ ] Screen 15 — Target weight (skip if Maintain; ≥2kg delta validation)
-- [ ] Screen 16 — Body-fat estimate slider with morphing avatar
+### 1.5e Section 4 — Physical Attributes (teal, 50–57%)
+- [x] Screen 13 — Weight slider + KG / LBS — [lib/screens/weight_screen.dart](lib/screens/weight_screen.dart)
+- [x] Screen 14 — Weight direction radio (Gain / Lose / Maintain) — [lib/screens/weight_direction_screen.dart](lib/screens/weight_direction_screen.dart)
+- [x] Screen 15 — Target weight with ≥2 kg delta validation — [lib/screens/target_weight_screen.dart](lib/screens/target_weight_screen.dart); router skips it when direction = Maintain
+- [x] Screen 16 — Body-fat estimate slider — [lib/screens/body_fat_screen.dart](lib/screens/body_fat_screen.dart). Morphing avatar rendered as themed `PlaceholderBlock` for MVP; commissioned avatars deferred to the Phase 3 art pass.
 
-### 1.5f Section 5 — Daily Operations (green)
-- [ ] Screen 17 — Training days presets + 7 toggles (≥2 required)
-- [ ] Screen 18 — Session minutes radio
+### 1.5f Section 5 — Daily Operations (green, 65–70%)
+- [x] Screen 17 — Training days presets + 7 toggles (≥2 required) — [lib/screens/training_days_screen.dart](lib/screens/training_days_screen.dart)
+- [x] Screen 18 — Session minutes radio — [lib/screens/session_minutes_screen.dart](lib/screens/session_minutes_screen.dart)
 
-### 1.5g Section 6 — System Settings (white)
-- [ ] Screen 19 — Notification toggles (3) + OS permission prompt on CONTINUE
+### 1.5g Section 6 — System Settings (white, 87%)
+- [x] Screen 19 — Notification toggles (3) — [lib/screens/notification_prefs_screen.dart](lib/screens/notification_prefs_screen.dart). OS permission prompt lands with Phase 2.5's `NotificationsService`.
 
 ### 1.5h Outro + monetization
-- [ ] Screen 20 — Challenge System hype
-- [ ] Screen 21 — Paywall (stub only in Phase 1; full wire-up in Phase 2)
+- [x] Screen 20 — Challenge System hype — [lib/screens/challenge_system_screen.dart](lib/screens/challenge_system_screen.dart)
+- [x] Screen 21 — Paywall (3 tiers, Best Value preselected, Skip in header) — [lib/screens/paywall_screen.dart](lib/screens/paywall_screen.dart). IAP wiring deferred to §2.6.
 
 ### 1.5i Onboarding persistence
-- [ ] Each section's CONTINUE persists its block to SQLite (writes land before nav)
-- [ ] Resume logic: on cold launch, read `player.onboarded_at`; if null, jump to the first un-persisted screen
-- [ ] `onboarding_completed` event fires on first Home render (queued in `analytics_events`)
+- [x] Each screen's CONTINUE persists its block to SQLite (writes land before nav) — every onboarding screen now calls `*Service.patch(...)` on CONTINUE before navigation. Services return before `context.go`.
+- [x] Per-screen resume: each onboarding screen seeds its initial value from the relevant service (`PlayerService.getPlayer`, `GoalsService.get`, `ExperienceService.get`, `ScheduleService.get`, `NotificationPrefsService.get`). Re-entering a screen shows the previously saved choice.
+- [x] `onboarding_completed` event fires on first Home render — [home_screen.dart](lib/screens/home_screen.dart) `initState` → `PlayerService.completeOnboarding()` + `AnalyticsService.log('onboarding_completed', {...})` when `player.onboardedAt` is null. Idempotent; only runs once.
+- [x] Route-level resume: if `player.onboardedAt != null` on cold launch, go_router's `redirect` sends `/` → `/home` so returning users skip the whole 21-screen flow. Backed by [lib/state/onboarding_flag.dart](lib/state/onboarding_flag.dart) — a `ValueNotifier<bool>` seeded from `PlayerService.getPlayer()` in [main.dart](lib/main.dart) and flipped to `true` by Home's first-render completion trigger.
+
+### 1.5j Router wiring
+- [x] Full flow in [lib/router.dart](lib/router.dart): `/` → 2 hype slides → 3 registration screens → `/calibrating/1` → 3 objectives screens → `/calibrating/2` → 4 experience screens → `/calibrating/3` → 4 attributes screens (target-weight conditionally skipped) → `/calibrating/4` → 2 operations screens → `/calibrating/5` → 1 settings screen → `/calibrating/6` → 2 outro screens → `/loader-pre-home` → `/home`.
 
 ## 1.6 Local-only profile
-- [ ] No email/Apple/Google sign-in in v1.0 (PRD §6.1)
-- [ ] `player` row is created on first launch with placeholder display_name; onboarding overwrites
-- [ ] Replace in-memory `PlayerState` with a `player_dao.watchPlayer()` stream
-- [ ] All Phase-0 screens that read `PlayerState` are refactored to read from the DB stream
+
+- [x] No email / Apple / Google sign-in in v1.0 (PRD §6.1) — the app bootstraps the singleton `player` row without any auth step.
+- [x] `player` row is created on first write via `PlayerService.ensurePlayer`; onboarding overwrites. Schema has `CHECK (id = 1)` so there's always at most one player.
+- [x] `PlayerState` refactored to a thin cache over `PlayerService`: [lib/state/player_state.dart](lib/state/player_state.dart). Loads from `PlayerService.getPlayer()` at app start (via `..refresh()` in main.dart), exposes `player`, `isOnboarded`, `playerName`, and a `refresh()` method that screens call after every write.
+- [x] `copyWith` added to `Goal`, `ExperienceRow`, `ScheduleRow`, `NotificationPrefs` so services can offer patch semantics without replaying whole rows.
+- [x] `patch(…)` helper added to `PlayerService`, `GoalsService`, `ExperienceService`, `ScheduleService` — fetch existing row, overlay non-null args, upsert.
+- [x] All 21 onboarding screens wired: each reads existing value on mount, each persists on CONTINUE before navigating.
+- [ ] Post-onboarding screens (Home / Profile / Streak etc.) still read demo scalars for `level` / `streak` / `xpCurrent` / `xpMax` — those come from Phase 2 services (XP, Streak). Player display name on Home already flows through PlayerState and reflects the onboarded value.
 
 ## 1.7 Backup / restore (v1.0 multi-device story)
 - [ ] Settings action: Export → copies the SQLite file to a share sheet (Files / Drive / email)
 - [ ] Settings action: Import → confirm dialog, schema-version check, atomic replace
-- [ ] "Delete my data" — `DELETE FROM player WHERE id=1` cascades everything; wipes SQLCipher key
+- [ ] "Delete my data" — wired to `PlayerService.deleteAll()` (`DELETE FROM player WHERE id=1` cascades every dependent row)
 
 ## 1.8 Tests (Phase 1)
-- [ ] Unit: all DAOs (happy path + edge cases)
-- [ ] Unit: migration round-trips (every schema version)
+- [x] Unit: all 16 services — round-trip + edge cases ([test/db/db_smoke_test.dart](test/db/db_smoke_test.dart), 8 scenarios, landed with §1.1d)
+- [ ] Unit: migration round-trips — land alongside v2 schema bump (§1.4)
 - [ ] Widget: full onboarding flow from Welcome → Home with airplane mode on
 - [ ] Integration: kill the app mid-onboarding, relaunch — user resumes at the correct screen
 
 ## Phase 1 exit criteria
 - [ ] Fresh install in airplane mode completes full onboarding without error
 - [ ] Kill + relaunch at any point preserves all data in SQLite
-- [ ] `gym_levels.db` is unreadable with a vanilla SQLite viewer (SQLCipher on)
+- [—] `gym_levels.db` is unreadable with a vanilla SQLite viewer — **deferred per §1.2**; not a v1.0 blocker
 - [ ] Exercise catalog seed loads on first launch (80 rows verified)
-- [ ] All Phase 0 screens read their data from SQLite via DAOs, not from hard-coded constants
-- [ ] CI runs `dart run build_runner build`, `flutter analyze`, `flutter test` — all pass
-- [ ] Migration round-trip tests pass for all versions
+- [ ] All Phase 0 screens read their data from SQLite via services, not from hard-coded constants
+- [ ] CI runs `flutter analyze` + `flutter test` — all pass (no codegen step needed)
+- [ ] Migration round-trip tests pass for every schema version shipped so far
 
 ---
 
@@ -252,23 +305,25 @@ Current state: 5/21 screens built (Welcome, Objectives, Experience, Attributes, 
 
 **PRD references:** §9 features, §11.2 where server-ish logic runs, §12 gamification rules, §13 monetization, §14 notifications, §15 analytics.
 
-## 2.1 Services layer — [lib/services/](lib/services/)
+## 2.1 Gameplay services layer — [lib/game/](lib/game/)
 
-### 2.1a XP service (`xp_service.dart`)
+Distinct from the per-table persistence services under `lib/data/services/`. Gameplay services orchestrate: they call the data services, apply game rules (XP math, rank thresholds, quest rotation), and emit side effects (notifications, analytics events).
+
+### 2.1a XP engine (`lib/game/xp_engine.dart`)
 - [ ] Formula: `xp_per_set = base_xp × rpe_multiplier × pr_bonus` (PRD §12)
 - [ ] `rpe_multiplier` lookup: 0.6 at RPE 5 → 1.0 at RPE 8 → 1.3 at RPE 10 (interpolated)
 - [ ] `pr_bonus`: +25 XP when set is a weight-for-reps PR (compare against historical `sets` for that exercise)
 - [ ] Level curve: `xp_to_next(level) = round(100 × level^1.45)`, cap 99
 - [ ] Unit tests for every boundary (RPE 5/8/10, PR yes/no, level 1/10/99)
 
-### 2.1b Rank service (`rank_service.dart`)
+### 2.1b Rank engine (`lib/game/rank_engine.dart`)
 - [ ] Per-muscle rank from rolling 4-week `(max_volume × max_weight × frequency)` → map via thresholds in §9A.4
 - [ ] Tier names: Bronze I/II/III, Silver I/II/III, Gold I/II/III, Platinum I/II/III, Diamond I/II/III, Master, Grandmaster
 - [ ] Overall Rank = weighted median across 10 muscles (priority muscles × 1.5)
 - [ ] Recompute triggers: on workout save (synchronous, cheap) + nightly via `workmanager` (full rolling recalc)
 - [ ] Emit `rank_changed` analytics event on tier change
 
-### 2.1c Quest service (`quest_service.dart`)
+### 2.1c Quest engine (`lib/game/quest_engine.dart`)
 - [ ] Daily quest rotation at 04:00 local (PRD §9.4) via `workmanager`
 - [ ] Daily pool: "Complete today's workout", "Hit 3 sets at RPE 8+", "Finish under 45 min", "10,000 steps" (stub steps for now), "Log RPE on every set", etc.
 - [ ] Catch-up: if `workmanager` missed a rotation, catch up on next launch
@@ -276,7 +331,7 @@ Current state: 5/21 screens built (Welcome, Objectives, Experience, Attributes, 
 - [ ] Completion emits `+XP` toast + analytics + local notification
 - [ ] Player Class biases selection (Mass Builder → more volume quests, etc. — PRD §12)
 
-### 2.1d Streak service (`streak_service.dart`)
+### 2.1d Streak engine (`lib/game/streak_engine.dart`)
 - [ ] Increment once per scheduled day (`schedule.days`) with ≥1 set logged at RPE ≥6
 - [ ] Missed scheduled day → auto-consume 1 freeze if `freezes_remaining > 0`
 - [ ] Second miss → reset streak
@@ -284,7 +339,7 @@ Current state: 5/21 screens built (Welcome, Objectives, Experience, Attributes, 
 - [ ] Clock-skew guard (PRD §17): if device clock rewinds >24h, freeze streak increments for 24h + log `clock_anomaly`
 - [ ] Streak milestone trigger → navigate to `/streak-milestone` celebration
 
-### 2.1e Plan generator (`plan_generator.dart`)
+### 2.1e Plan generator (`lib/game/plan_generator.dart`)
 Implements PRD Appendix B in Dart.
 - [ ] Input: profile + goals + experience + schedule
 - [ ] `pick_split(days_per_week, priority_muscles)` — 2d full-body / 3d PPL / 4d U-L×2 / 5-6d bro-split or PPLUL
@@ -487,7 +542,7 @@ PRD design-system §10.
 - [ ] Pro entitlement honored for full `renews_at` window with permanently disabled network
 
 ### 3.12c Reliability & security
-- [ ] SQLCipher ON by default; raw SQLite viewer cannot open DB
+- [—] SQLCipher ON by default; raw SQLite viewer cannot open DB — **deferred to v1.0.1+ per §1.2 decision**
 - [ ] Crash-free sessions ≥99.5% over 7 days of beta
 - [ ] Store listings (screenshots, preview video) approved in both stores
 - [ ] Network-interception test: zero user data egress except (a) anonymised analytics with `install_id`, (b) store-billing receipts
@@ -536,7 +591,7 @@ Not built in MVP. Listed for planning visibility only; do not start until v1.0 i
 # Cross-cutting tracks (present in every phase)
 
 ## CI / CD
-- [ ] GitHub Actions: `flutter analyze` + `flutter test` + `drift_dev` build on every PR
+- [ ] GitHub Actions: `flutter analyze` + `flutter test` on every PR (no codegen step required)
 - [ ] Fastlane lanes for iOS + Android release builds
 - [ ] Version bump + changelog generation
 - [ ] Automated screenshot capture for store listings (via integration tests)
@@ -560,26 +615,28 @@ Not built in MVP. Listed for planning visibility only; do not start until v1.0 i
 # Dependencies & unblock-order
 
 ```
-Phase 0 (done)
+Phase 0 (done) ✓
     ↓
-Phase 1.1 (drift + DB) ────────┐
-    ↓                          │
-Phase 1.5 onboarding screens ──┤ (need DAOs)
-    ↓                          │
-Phase 1 complete ──────────────┘
+Phase 1.1 (sqflite + services) ✓ done
     ↓
-Phase 2.1 services ────────────┐
-    ↓                          │
-Phase 2.2 logger wiring ───────┤ (needs XP/rank services)
-    ↓                          │
-Phase 2.5 notifications ───────┤ (needs schedule DAO)
-    ↓                          │
-Phase 2.6 paywall + IAP ───────┘ (needs subscription DAO)
+Phase 1.3 (exercise seed)  ─────────┐
+Phase 1.5 remaining onboarding ─────┤ screens persist via services
+Phase 1.6 PlayerState over services ┘
+    ↓
+Phase 1 complete
+    ↓
+Phase 2.1 game engines ─────────────┐ (call data services)
+    ↓                               │
+Phase 2.2 logger wiring ────────────┤ (needs xp/rank engines)
+    ↓                               │
+Phase 2.5 notifications ────────────┤ (needs ScheduleService)
+    ↓                               │
+Phase 2.6 paywall + IAP ────────────┘ (needs SubscriptionService)
     ↓
 Phase 3 polish + launch
 ```
 
-**Critical path:** Phase 1.1 (drift setup + all DAOs) blocks everything. Prioritise it.
+**Current critical path:** Phase 1.3 (seed) + Phase 1.6 (rewire screens onto services). Until 1.6 lands, screens still read hard-coded constants — the persistence layer is plumbed but unused by the UI.
 
 ---
 

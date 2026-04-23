@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
+import '../data/services/analytics_service.dart';
+import '../data/services/player_service.dart';
+import '../state/onboarding_flag.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/buttons.dart';
@@ -13,8 +17,44 @@ import '../widgets/rank_badge.dart';
 import '../widgets/tab_bar.dart';
 import '../widgets/xp_ring.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCompleteOnboarding());
+  }
+
+  /// Fires once on first Home render after the user finishes the onboarding
+  /// flow. Writes `player.onboarded_at`, queues the analytics event, and
+  /// refreshes PlayerState so observers pick up the new state.
+  Future<void> _maybeCompleteOnboarding() async {
+    if (!mounted) return;
+    final state = context.read<PlayerState>();
+    if (state.player == null) {
+      await state.refresh();
+    }
+    if (!mounted) return;
+    final already = state.player?.isOnboarded ?? false;
+    if (already) return;
+
+    await PlayerService.completeOnboarding();
+    await AnalyticsService.log('onboarding_completed', {
+      'source': 'home_first_render',
+    });
+    // Flip the router flag so subsequent cold starts (and any in-session
+    // navigation back to `/`) go straight to Home instead of re-running
+    // the onboarding flow.
+    isOnboardedNotifier.value = true;
+    if (!mounted) return;
+    await state.refresh();
+  }
 
   @override
   Widget build(BuildContext context) {

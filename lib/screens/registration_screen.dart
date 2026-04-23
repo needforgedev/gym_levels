@@ -26,8 +26,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   void initState() {
     super.initState();
-    final existing = context.read<PlayerState>().playerName;
-    _value = existing == 'Kael·7' ? '' : existing;
+    final player = context.read<PlayerState>().player;
+    _value = player?.displayName ?? '';
     _ctl = TextEditingController(text: _value);
     _focus = FocusNode();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
@@ -42,10 +42,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   bool get _valid => _value.trim().length >= 2 && _value.trim().length <= 20;
 
-  void _onSubmit() {
+  Future<void> _onSubmit() async {
     if (!_valid) return;
-    context.read<PlayerState>().setDisplayName(_value.trim());
-    context.go('/calibrating');
+    await context.read<PlayerState>().setDisplayName(_value.trim());
+    if (!mounted) return;
+    context.go('/age');
   }
 
   @override
@@ -56,7 +57,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       kicker: 'PLAYER REGISTRATION',
       subtitle: '…assigning callsign to new recruit.',
       nextEnabled: _valid,
-      onBack: () => context.go('/'),
+      onBack: () => context.go('/hype/progression'),
       onNext: _onSubmit,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
