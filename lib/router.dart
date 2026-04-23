@@ -8,6 +8,7 @@ import 'screens/boss_detail_screen.dart';
 import 'screens/calibrating_screen.dart';
 import 'screens/challenge_system_screen.dart';
 import 'screens/equipment_screen.dart';
+import 'screens/exercise_picker_screen.dart';
 import 'screens/height_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/level_up_screen.dart';
@@ -31,6 +32,8 @@ import 'screens/training_styles_screen.dart';
 import 'screens/weight_direction_screen.dart';
 import 'screens/weight_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'screens/workout_detail_screen.dart';
+import 'screens/workout_history_screen.dart';
 import 'screens/workout_screen.dart';
 
 /// Full PRD §8 onboarding flow:
@@ -175,7 +178,26 @@ final appRouter = GoRouter(
 
     // In-app tabs + post-onboarding
     GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
-    GoRoute(path: '/workout', builder: (_, _) => const WorkoutScreen()),
+    GoRoute(
+      path: '/exercise-picker',
+      builder: (_, _) => const ExercisePickerScreen(),
+    ),
+    GoRoute(
+      path: '/workout/new/:exerciseId',
+      builder: (ctx, state) => WorkoutScreen(
+        exerciseId: int.parse(state.pathParameters['exerciseId']!),
+      ),
+    ),
+    GoRoute(
+      path: '/workouts',
+      builder: (_, _) => const WorkoutHistoryScreen(),
+    ),
+    GoRoute(
+      path: '/workouts/:id',
+      builder: (ctx, state) => WorkoutDetailScreen(
+        workoutId: int.parse(state.pathParameters['id']!),
+      ),
+    ),
     GoRoute(path: '/quests', builder: (_, _) => const QuestsScreen()),
     GoRoute(path: '/boss-detail', builder: (_, _) => const BossDetailScreen()),
     GoRoute(path: '/streak', builder: (_, _) => const StreakScreen()),

@@ -20,8 +20,8 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 | Phase | Name | PRD roadmap | Window | Status |
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
-| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.6 PlayerState-over-service **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
-| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[ ]` not started |
+| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
+| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines (XP / Rank / Quest / Streak / PlanGen) **done** ✓ + §2.2 core wiring; remaining: 2.3 Today's Workout screen, 2.4 Muscle Rankings drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[ ]` not started |
 | **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
 
@@ -152,7 +152,7 @@ Contract: services are the **only** place that touches `sqflite`. Screens never 
 - [x] `notification_prefs_service.dart` — get, upsert
 - [x] `player_class_service.dart` — get, assign (with evolution history audit)
 - [x] `exercise_service.dart` — getAll, byId, byPrimaryMuscle, count, insertBatch (idempotent seed via IGNORE)
-- [x] `workout_service.dart` — start, finish, byId, recent, totalFinished
+- [x] `workout_service.dart` — start, finish, byId, recent, totalFinished, delete
 - [x] `sets_service.dart` — insertSet, forWorkout, bestFor (PR detection seam), volumeFor
 - [x] `muscle_rank_service.dart` — getAll, forMuscle, upsert
 - [x] `quest_service.dart` — insert, active, all, updateProgress, complete
@@ -275,7 +275,7 @@ Shared additions:
 - [x] `copyWith` added to `Goal`, `ExperienceRow`, `ScheduleRow`, `NotificationPrefs` so services can offer patch semantics without replaying whole rows.
 - [x] `patch(…)` helper added to `PlayerService`, `GoalsService`, `ExperienceService`, `ScheduleService` — fetch existing row, overlay non-null args, upsert.
 - [x] All 21 onboarding screens wired: each reads existing value on mount, each persists on CONTINUE before navigating.
-- [ ] Post-onboarding screens (Home / Profile / Streak etc.) still read demo scalars for `level` / `streak` / `xpCurrent` / `xpMax` — those come from Phase 2 services (XP, Streak). Player display name on Home already flows through PlayerState and reflects the onboarded value.
+- [~] Post-onboarding screens partially wired to real data. As of §1.9: Home's **Total Workouts** card reads from `WorkoutService.totalFinished()` live; display name flows through PlayerState. Profile / Streak / Quests + Home's `level` / `streak` / `xpCurrent` / `xpMax` / muscle-rank row / active quests still read demo scalars — those come from Phase 2 gameplay engines (XP, Streak, Rank, Quest).
 
 ## 1.7 Backup / restore (v1.0 multi-device story)
 - [ ] Settings action: Export → copies the SQLite file to a share sheet (Files / Drive / email)
@@ -288,14 +288,39 @@ Shared additions:
 - [ ] Widget: full onboarding flow from Welcome → Home with airplane mode on
 - [ ] Integration: kill the app mid-onboarding, relaunch — user resumes at the correct screen
 
+## 1.9 Demo-ready workout tracker (early carveout from Phase 2.2)
+
+**Landed 2026-04-20.** Pulls the *persistence-only* slice out of §2.2 so the app can be used as a real tracker before the gameplay engines land. Gamification side effects (XP math, rank recompute, quest progress, PR detection) stay deferred to Phase 2.1.
+
+- [x] [lib/screens/exercise_picker_screen.dart](lib/screens/exercise_picker_screen.dart) — lists all 80 seeded exercises, grouped by `primaryMuscle`, with a search bar. `baseXp` badge (teal 5 / purple 3) signals compound vs accessory at a glance.
+- [x] [lib/screens/workout_screen.dart](lib/screens/workout_screen.dart) rewired to persistence: takes `exerciseId`, calls `WorkoutService.start()` on mount, writes a `sets` row on every COMPLETE SET via `SetsService.insertSet`, stamps `ended_at` + rolls up `xp_earned` + `volume_kg` via `WorkoutService.finish` on Finish / X. Empty session → `WorkoutService.delete` discards it.
+- [x] `+ ADD SET` button dynamically appends a new active set card.
+- [x] Live session stats row (VOLUME / SESSION XP / SETS) updates synchronously on every complete.
+- [x] [lib/screens/workout_history_screen.dart](lib/screens/workout_history_screen.dart) — reverse-chron list via `WorkoutService.recent(limit: 50)`, pull-to-refresh, swipe-left-to-delete with confirm dialog (cascades to sets via FK), empty state CTA.
+- [x] [lib/screens/workout_detail_screen.dart](lib/screens/workout_detail_screen.dart) — read-only summary (date / volume / duration / XP) + per-set list with exercise names resolved via `ExerciseService.byId`. "DELETE WORKOUT" with confirm.
+- [x] Home rewire — "Start Workout" card → `/exercise-picker`; new **Total Workouts** NeonCard with live `WorkoutService.totalFinished()` via FutureBuilder + tap → `/workouts`.
+- [x] Router — retired `/workout`; added `/exercise-picker`, `/workout/new/:exerciseId`, `/workouts`, `/workouts/:id`.
+
+### 1.9 known gaps (intentional — Phase 2 work)
+
+- [ ] XP per set uses a placeholder `baseXp × 5` — real `XpEngine` in Phase 2.1a
+- [ ] `is_pr` always `false` — PR detection in Phase 2.1a (uses `SetsService.bestFor`)
+- [ ] Muscle-rank recompute on save — Phase 2.1b
+- [ ] Active quest progress updates on save — Phase 2.1c
+- [ ] Streak increments — Phase 2.1d
+- [ ] Multiple exercises per session via `+ Add Exercise` + Swap sheet — Phase 2.2
+- [ ] Session summary modal on finish — Phase 2.2 (currently navigates to detail screen)
+- [ ] Rest timer surviving app-background — Phase 2.2
+- [ ] Haptics on set-complete + level-up — Phase 2.2
+
 ## Phase 1 exit criteria
-- [ ] Fresh install in airplane mode completes full onboarding without error
-- [ ] Kill + relaunch at any point preserves all data in SQLite
+- [ ] Fresh install in airplane mode completes full onboarding without error — needs §1.8 airplane-mode integration test to formally verify; manual path is demonstrably functional
+- [x] Kill + relaunch preserves onboarding + workout data in SQLite — verified manually via §1.5i route-level resume + §1.9 workout persistence; formal `kill -9` instrumentation test still in §1.8
 - [—] `gym_levels.db` is unreadable with a vanilla SQLite viewer — **deferred per §1.2**; not a v1.0 blocker
-- [ ] Exercise catalog seed loads on first launch (80 rows verified)
-- [ ] All Phase 0 screens read their data from SQLite via services, not from hard-coded constants
-- [ ] CI runs `flutter analyze` + `flutter test` — all pass (no codegen step needed)
-- [ ] Migration round-trip tests pass for every schema version shipped so far
+- [x] Exercise catalog seed loads on first launch (80 rows verified) — landed with §1.3, covered by [test/db/seed_test.dart](test/db/seed_test.dart)
+- [~] All Phase 0 screens read their data from SQLite via services — **onboarding (all 21) + Home's Total Workouts card** done; Profile / Streak / Quests / Home gameplay scalars still read demo values pending Phase 2 engines
+- [~] CI runs `flutter analyze` + `flutter test` — all pass locally on every change; GitHub Actions workflow not yet set up
+- [ ] Migration round-trip tests pass for every schema version shipped so far — lands with first v2 schema bump per §1.4
 
 ---
 
@@ -309,56 +334,69 @@ Shared additions:
 
 Distinct from the per-table persistence services under `lib/data/services/`. Gameplay services orchestrate: they call the data services, apply game rules (XP math, rank thresholds, quest rotation), and emit side effects (notifications, analytics events).
 
-### 2.1a XP engine (`lib/game/xp_engine.dart`)
-- [ ] Formula: `xp_per_set = base_xp × rpe_multiplier × pr_bonus` (PRD §12)
-- [ ] `rpe_multiplier` lookup: 0.6 at RPE 5 → 1.0 at RPE 8 → 1.3 at RPE 10 (interpolated)
-- [ ] `pr_bonus`: +25 XP when set is a weight-for-reps PR (compare against historical `sets` for that exercise)
-- [ ] Level curve: `xp_to_next(level) = round(100 × level^1.45)`, cap 99
-- [ ] Unit tests for every boundary (RPE 5/8/10, PR yes/no, level 1/10/99)
+### 2.1a XP engine — [lib/game/xp_engine.dart](lib/game/xp_engine.dart)
+- [x] Per-set formula: `round(baseXp × rpeMultiplier) + (isPr ? 25 : 0)` — additive read of the PRD §12 "+25 pr_bonus" clause
+- [x] `rpeMultiplier` piecewise linear: 0.6 @ RPE 5 → 1.0 @ RPE 8 → 1.3 @ RPE 10; clamps outside [5, 10]; null RPE → 1.0 ("on target")
+- [x] PR bonus: `SetsService.bestFor(exerciseId)` in the logger compares current-set volume against historical best; +25 XP added if it beats
+- [x] Level curve: `xpToNextLevel(level) = round(100 × level^1.45)`, cap 99; `XpEngine.resolve(totalXp) → LevelSnapshot(level, xpInLevel, xpToNext, progress)`
+- [x] Unit tests — [test/game/xp_engine_test.dart](test/game/xp_engine_test.dart) (12 cases covering anchors, interpolation, PR additive math, cap)
 
-### 2.1b Rank engine (`lib/game/rank_engine.dart`)
-- [ ] Per-muscle rank from rolling 4-week `(max_volume × max_weight × frequency)` → map via thresholds in §9A.4
-- [ ] Tier names: Bronze I/II/III, Silver I/II/III, Gold I/II/III, Platinum I/II/III, Diamond I/II/III, Master, Grandmaster
-- [ ] Overall Rank = weighted median across 10 muscles (priority muscles × 1.5)
-- [ ] Recompute triggers: on workout save (synchronous, cheap) + nightly via `workmanager` (full rolling recalc)
-- [ ] Emit `rank_changed` analytics event on tier change
+### 2.1b Rank engine — [lib/game/rank_engine.dart](lib/game/rank_engine.dart)
+- [x] Per-muscle `rank_xp = round(rolling_4_week_volume_kg / 10)` — simpler than PRD §9.3's `max_volume × max_weight × frequency` which overshoots the PRD §9A.4 thresholds for real lifting weights; formula noted in-code for post-beta tuning
+- [x] Tier mapping: Bronze / Silver / Gold / Platinum / Diamond split into thirds (I / II / III); Master + Grandmaster single-tier. Thresholds match PRD §9A.4 exactly (500 / 1500 / 3500 / 7000 / 12000 / 20000).
+- [x] `recomputeAll()` runs on workout finish via `GameHandlers.onWorkoutFinished` — one `GROUP BY primary_muscle` query against the 4-week window, then `MuscleRankService.upsert` per touched muscle.
+- [x] `overallRank({priorityMuscles})` — priority-weighted **mean** of tracked-muscle rank_xp → `assign()` for the tier. PRD §9.3 specifies weighted median; using mean for MVP (fractional-weight median is fiddly and the user-visible tier moves the same way).
+- [ ] Emit `rank_changed` analytics event on tier change — wait until the celebration flow can handle multi-muscle diffs
+- [ ] Nightly recompute via `workmanager` — deferred until §2.5 notifications bring WorkManager in
+- [x] Unit tests — [test/game/rank_engine_test.dart](test/game/rank_engine_test.dart) covering every tier boundary + sub-rank thirds + negative clamp
 
-### 2.1c Quest engine (`lib/game/quest_engine.dart`)
-- [ ] Daily quest rotation at 04:00 local (PRD §9.4) via `workmanager`
-- [ ] Daily pool: "Complete today's workout", "Hit 3 sets at RPE 8+", "Finish under 45 min", "10,000 steps" (stub steps for now), "Log RPE on every set", etc.
-- [ ] Catch-up: if `workmanager` missed a rotation, catch up on next launch
-- [ ] Progress updates on set save, workout finish, or step count change
-- [ ] Completion emits `+XP` toast + analytics + local notification
-- [ ] Player Class biases selection (Mass Builder → more volume quests, etc. — PRD §12)
+### 2.1c Quest engine — [lib/game/quest_engine.dart](lib/game/quest_engine.dart)
+- [x] Daily rotation: `rotateDailyIfNeeded()` called from Home's `initState`. If no quest was issued since today's local midnight, completes any stragglers + inserts 3 fresh from the pool.
+- [x] Daily pool (4 templates): `complete_workout` / `sets_logged` / `volume_goal` / `compound_lift`. Each template's `kindKey` is stored in `quests.description` so progress tracking can look up how to increment.
+- [x] Progress updates in `GameHandlers.onWorkoutFinished` — per-kind increments (complete→+1, sets→+setCount, volume→+kg, compound→+1 if any baseXp≥5 in session). Auto-stamps `completed_at` when progress ≥ target.
+- [x] `quest_completed` analytics event fires per newly-completed quest (PRD §15)
+- [ ] 04:00-local rotation boundary (vs. midnight) — cosmetic timing; defer until `workmanager` integration in §2.5
+- [ ] Catch-up on missed rotation — handled trivially because `rotateDailyIfNeeded` fires on every Home mount
+- [ ] Player Class biases quest selection — Phase 3 polish once the class card is wired
+- [ ] Completion in-app banner — lands with notification polish in §2.5 (the analytics event already fires)
 
-### 2.1d Streak engine (`lib/game/streak_engine.dart`)
-- [ ] Increment once per scheduled day (`schedule.days`) with ≥1 set logged at RPE ≥6
-- [ ] Missed scheduled day → auto-consume 1 freeze if `freezes_remaining > 0`
-- [ ] Second miss → reset streak
-- [ ] Freeze replenishment: free 1/week, Pro 2/week (toggle by `subscriptions.tier`)
-- [ ] Clock-skew guard (PRD §17): if device clock rewinds >24h, freeze streak increments for 24h + log `clock_anomaly`
-- [ ] Streak milestone trigger → navigate to `/streak-milestone` celebration
+### 2.1d Streak engine — [lib/game/streak_engine.dart](lib/game/streak_engine.dart)
+- [x] Increment once per calendar day on workout finish; break (>1 day gap) resets to 1 but keeps `longest`
+- [x] Milestone detection for 7 / 14 / 30 / 60 / 90 / 180 / 365 — returned via `StreakUpdate.milestoneReached`; logger uses it to navigate to `/streak-milestone` celebration on finish
+- [x] Unit tests — [test/game/streak_engine_test.dart](test/game/streak_engine_test.dart) covering first increment, same-day no-op, gap-reset, consecutive-day increment, milestone flag
+- [ ] Respect `schedule.days` (only count scheduled days) — deferred; v1 counts every workout day
+- [ ] RPE ≥ 6 gate — deferred; RPE capture not wired into the logger yet
+- [ ] Freeze auto-consumption (PRD §9A.5) — deferred
+- [ ] Clock-skew guard (PRD §17) — deferred
 
-### 2.1e Plan generator (`lib/game/plan_generator.dart`)
-Implements PRD Appendix B in Dart.
-- [ ] Input: profile + goals + experience + schedule
-- [ ] `pick_split(days_per_week, priority_muscles)` — 2d full-body / 3d PPL / 4d U-L×2 / 5-6d bro-split or PPLUL
-- [ ] Filter by `experience.equipment`, swap around `experience.limitations`
-- [ ] Volume multiplier by tenure: {beginner 0.8, starting 1.0, some 1.1, experienced 1.2}
-- [ ] Per session: 1–2 compounds + 3–4 accessories
-- [ ] Sets × reps by `goal.body_type` (hypertrophy / strength / endurance mix)
-- [ ] Regenerates on goal/equipment/schedule edits
+### 2.1e Plan generator — [lib/game/plan_generator.dart](lib/game/plan_generator.dart)
+Minimum-viable implementation of PRD Appendix B. Returns **today's** suggested session or `null` on rest days.
+
+- [x] `PlanGenerator.todaysSession()` — input: `schedule.days` + `goals.bodyType` + `experience.equipment + limitations`; output: `SessionPlan(focus, exercises, estimatedMinutes)` or `null`
+- [x] Split mapping by `schedule.days.length`: 2d full-body, 3d PPL, 4d UL×2, 5d PPLUL, 6d PPL×2, 7d rotating
+- [x] Muscle-groups-per-focus lookup covering push / pull / legs / upper / lower / full
+- [x] Equipment filter: skips exercises whose gear the user doesn't own (`bodyweight` always passes)
+- [x] Limitation filter: `lower_back / knee / shoulder / wrist_elbow / hip / neck` → avoided muscles
+- [x] Sets × reps from `goals.bodyType` — lean 3×12 / muscular 3×10 / strong 5×5 / balanced 3×8; accessories get +2 reps
+- [x] Per-session caps via `schedule.sessionMinutes` (~6 min/exercise) clamped to [4, 8]
+- [ ] Session-to-session periodization / 4-week rolling plan — deferred to §3.6 "Custom plan regeneration" (Pro feature)
+- [ ] Auto-regenerate on goal/equipment/schedule edits — the generator is idempotent; invalidation is a UI concern for Phase 3 settings
+- [ ] Unit tests — structural (split mapping + equipment filter) deferred; the data services the generator relies on are already covered by [test/db/db_smoke_test.dart](test/db/db_smoke_test.dart)
 
 ## 2.2 Workout logger — wire to real persistence
-Phase 0 has the UI + a Provider-backed XP bump. Now replace with real:
 
-- [ ] `WorkoutSession` state in SQLite (`workouts` row created on session start, `sets` rows inserted on each completeSet)
-- [ ] XP calculated by `XpService`, written to `sets.xp_earned` and rolled up into `workouts.xp_earned`
-- [ ] Muscle rank recomputed on save (`RankService.recomputeFor(muscles)`)
-- [ ] PR detection emits `[System]` in-app banner (PRD §14)
-- [ ] Active quest progress updated on save
-- [ ] Session summary modal on finish: duration, total volume, XP earned, sets completed, new PRs, rank changes
-- [ ] `+Add Set`, `+Add Exercise`, Swap sheet wired up
+Persistence-only slice **already landed** in §1.9 so the app demos as a real tracker today. This section now covers the gamification wire-up that layers on top.
+
+- [x] `WorkoutSession` state in SQLite (`workouts` row created on session start, `sets` rows inserted on each completeSet) — **landed with §1.9**
+- [x] XP calculated by [XpEngine.xpForSet](lib/game/xp_engine.dart) via `GameHandlers.xpForSet`, written to `sets.xp_earned` and rolled up into `workouts.xp_earned` on finish — landed with §2.1a
+- [x] Muscle rank recomputed on save via [RankEngine.recomputeAll](lib/game/rank_engine.dart) (called from `GameHandlers.onWorkoutFinished`)
+- [x] PR detection on every COMPLETE SET — `SetsService.bestFor` compared against current-set volume, `is_pr` persisted on the `sets` row, PR adds the +25 XP bonus
+- [x] Active daily-quest progress updated on workout finish via [QuestEngine.onWorkoutFinished](lib/game/quest_engine.dart)
+- [x] Level-up / streak-milestone navigation on finish — logger checks `summary.leveledUp` / `summary.streakMilestoneReached` and routes to `/level-up` or `/streak-milestone` before the default detail screen
+- [ ] Session summary **modal** on finish: duration, volume, XP earned, sets completed, new PRs, rank changes — today the logger navigates to [WorkoutDetailScreen](lib/screens/workout_detail_screen.dart) instead of a modal; modal polish pass deferred
+- [ ] PR `[System]` in-app banner (PRD §14) — analytics seam exists; banner UI lands with §2.5 notifications
+- [x] `+ Add Set` wired up — **landed with §1.9**
+- [ ] `+ Add Exercise` (multiple exercises per session) + Swap sheet — §1.9 ships single-exercise sessions only
 - [ ] Rest timer persists across backgrounding (don't lose the countdown if user leaves app mid-rest)
 - [ ] Haptics: light on set complete, success on level-up
 
@@ -617,26 +655,28 @@ Not built in MVP. Listed for planning visibility only; do not start until v1.0 i
 ```
 Phase 0 (done) ✓
     ↓
-Phase 1.1 (sqflite + services) ✓ done
+Phase 1.1 (sqflite + services)   ✓ done
+Phase 1.3 (80-exercise seed)     ✓ done
+Phase 1.5 (21 onboarding screens + persistence) ✓ done
+Phase 1.6 (PlayerState over services)           ✓ done
+Phase 1.9 (demo tracker: picker + logger + history + detail) ✓ done
     ↓
-Phase 1.3 (exercise seed)  ─────────┐
-Phase 1.5 remaining onboarding ─────┤ screens persist via services
-Phase 1.6 PlayerState over services ┘
+Phase 1 parked:  1.7 (backup/restore), 1.8 (airplane-mode integration tests)
     ↓
-Phase 1 complete
+Phase 2.1 (XpEngine / RankEngine / QuestEngine / StreakEngine / PlanGenerator + GameHandlers) ✓ done
+Phase 2.2 (logger gamification wiring: real XP per set, PR detect, rank recompute, level-up + milestone nav) ✓ done core
     ↓
-Phase 2.1 game engines ─────────────┐ (call data services)
-    ↓                               │
-Phase 2.2 logger wiring ────────────┤ (needs xp/rank engines)
-    ↓                               │
-Phase 2.5 notifications ────────────┤ (needs ScheduleService)
-    ↓                               │
-Phase 2.6 paywall + IAP ────────────┘ (needs SubscriptionService)
+Phase 2.3 Today's Workout screen  ─┐ surfaces PlanGenerator output
+Phase 2.4 Muscle Rankings drill-down
+Phase 2.5 notifications          ─┤ flutter_local_notifications
+Phase 2.6 paywall + IAP          ─┘ in_app_purchase + cached entitlement
+Phase 2.7 analytics flush to PostHog
+Phase 2.8 crash reporting (sentry_flutter)
     ↓
 Phase 3 polish + launch
 ```
 
-**Current critical path:** Phase 1.3 (seed) + Phase 1.6 (rewire screens onto services). Until 1.6 lands, screens still read hard-coded constants — the persistence layer is plumbed but unused by the UI.
+**Current critical path:** **Phase 2.3 Today's Workout screen**. The PlanGenerator service is ready; surfacing it on a "today's session" screen unlocks "tap → start → log against the generated session" which is the tightest demo loop. Notifications (§2.5) and paywall (§2.6) are independent of the gameplay engines and can proceed in parallel.
 
 ---
 

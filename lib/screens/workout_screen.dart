@@ -4,6 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../data/models/exercise.dart';
+import '../data/models/workout_set.dart';
+import '../data/services/exercise_service.dart';
+import '../data/services/sets_service.dart';
+import '../data/services/workout_service.dart';
+import '../game/game_handlers.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/buttons.dart';
@@ -12,75 +18,65 @@ import '../widgets/numeric_stepper.dart';
 import '../widgets/screen_base.dart';
 import '../widgets/xp_toast.dart';
 
-enum _SetState { pending, active, completed }
+/// Live workout logger. Creates a `workouts` row on mount, writes a `sets`
+/// row on every COMPLETE SET. Finish (or back-with-sets) stamps `ended_at`,
+/// rolls up `volume_kg` and `xp_earned`, and lands the user on Home. If the
+/// user backs out before logging a set, the empty workout is deleted.
+enum _SetState { active, completed }
 
 class _SetData {
-  _SetData({
-    required this.n,
-    required this.targetReps,
-    required this.targetWeight,
-    required this.state,
-    this.actualReps,
-    this.actualWeight,
-    this.diff,
-  });
-
+  _SetData({required this.n, required this.state});
   final int n;
-  final int targetReps;
-  final int targetWeight;
   _SetState state;
-  int? actualReps;
-  int? actualWeight;
-  String? diff;
+  int? reps;
+  double? weight;
 }
 
 class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key});
+  const WorkoutScreen({super.key, required this.exerciseId});
+
+  final int exerciseId;
 
   @override
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
-  final _sets = <_SetData>[
-    _SetData(
-      n: 1,
-      targetReps: 8,
-      targetWeight: 80,
-      state: _SetState.completed,
-      actualWeight: 80,
-      actualReps: 8,
-      diff: 'B',
-    ),
-    _SetData(
-      n: 2,
-      targetReps: 8,
-      targetWeight: 85,
-      state: _SetState.completed,
-      actualWeight: 85,
-      actualReps: 8,
-      diff: 'C',
-    ),
-    _SetData(
-      n: 3,
-      targetReps: 8,
-      targetWeight: 85,
-      state: _SetState.active,
-    ),
-    _SetData(
-      n: 4,
-      targetReps: 8,
-      targetWeight: 85,
-      state: _SetState.pending,
-    ),
-  ];
-
+  Exercise? _exercise;
+  int? _workoutId;
+  bool _loading = true;
+  final _sets = <_SetData>[_SetData(n: 1, state: _SetState.active)];
   int _reps = 8;
-  double _weight = 85;
+  double _weight = 20;
   bool _resting = false;
   int _restSec = 90;
   Timer? _restTimer;
   int? _toastKey;
+  int _sessionXp = 0;
+  DateTime? _startedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    final ex = await ExerciseService.byId(widget.exerciseId);
+    if (!mounted) return;
+    if (ex == null) {
+      context.go('/home');
+      return;
+    }
+    final id = await WorkoutService.start();
+    if (!mounted) return;
+    setState(() {
+      _exercise = ex;
+      _workoutId = id;
+      _startedAt = DateTime.now();
+      _loading = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -90,79 +86,189 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   void _startRest() {
     _restTimer?.cancel();
-    _restSec = 90;
-    _resting = true;
+    setState(() {
+      _resting = true;
+      _restSec = 90;
+    });
     _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() {
-        _restSec = (_restSec - 1).clamp(0, 9999);
-        if (_restSec == 0) {
-          _restTimer?.cancel();
-          _resting = false;
-        }
-      });
+      setState(() => _restSec = (_restSec - 1).clamp(0, 9999));
+      if (_restSec == 0) {
+        _restTimer?.cancel();
+        setState(() => _resting = false);
+      }
     });
   }
 
-  void _completeSet() {
+  Future<void> _completeSet() async {
+    final idx = _sets.indexWhere((s) => s.state == _SetState.active);
+    if (idx == -1 || _workoutId == null) return;
+
+    // PR detection: beat either weight-for-reps or reps-at-weight?
+    // Simple rule — a set is a PR if it out-volumes every prior set of the
+    // same exercise (weight × reps). Uses SetsService.bestFor which already
+    // orders by weight DESC, reps DESC.
+    final prior = await SetsService.bestFor(widget.exerciseId);
+    final priorVolume = prior == null
+        ? 0
+        : (prior.weightKg ?? 0) * prior.reps;
+    final thisVolume = _weight * _reps;
+    final isPr = prior != null && thisVolume > priorVolume;
+
+    final xpEarned = await GameHandlers.xpForSet(
+      exerciseId: widget.exerciseId,
+      rpe: null, // RPE capture lands in a later Phase 2 polish pass
+      isPr: isPr,
+    );
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await SetsService.insertSet(WorkoutSet(
+      workoutId: _workoutId!,
+      exerciseId: widget.exerciseId,
+      setNumber: _sets[idx].n,
+      weightKg: _weight,
+      reps: _reps,
+      xpEarned: xpEarned,
+      isPr: isPr,
+      completedAt: now,
+    ));
+
+    if (!mounted) return;
     setState(() {
-      final idx = _sets.indexWhere((s) => s.state == _SetState.active);
-      if (idx == -1) return;
       _sets[idx]
         ..state = _SetState.completed
-        ..actualReps = _reps
-        ..actualWeight = _weight.round()
-        ..diff = 'B';
-      if (idx + 1 < _sets.length) {
-        _sets[idx + 1].state = _SetState.active;
-      }
+        ..reps = _reps
+        ..weight = _weight;
+      _sessionXp += xpEarned;
       _toastKey = DateTime.now().millisecondsSinceEpoch;
     });
-    context.read<PlayerState>().addXp(25);
+
+    context.read<PlayerState>().addXp(xpEarned);
     _startRest();
+
     Timer(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
       setState(() => _toastKey = null);
     });
   }
 
+  void _addSet() {
+    setState(() {
+      _sets.add(_SetData(n: _sets.length + 1, state: _SetState.active));
+    });
+  }
+
+  Future<void> _finishAndGo(String fallbackRoute) async {
+    if (_workoutId == null) {
+      if (!mounted) return;
+      context.go(fallbackRoute);
+      return;
+    }
+
+    final completed = _sets.where((s) => s.state == _SetState.completed).toList();
+    if (completed.isEmpty) {
+      await WorkoutService.delete(_workoutId!);
+      if (!mounted) return;
+      context.go(fallbackRoute);
+      return;
+    }
+
+    final volume = completed.fold<double>(
+      0,
+      (a, s) => a + ((s.weight ?? 0) * (s.reps ?? 0)),
+    );
+
+    final state = context.read<PlayerState>();
+    await WorkoutService.finish(
+      _workoutId!,
+      xpEarned: _sessionXp,
+      volumeKg: volume,
+    );
+
+    // Fan out to the gameplay engines (rank recompute, streak tick, quest
+    // progress, analytics). Summary drives post-session celebration nav.
+    final summary = await GameHandlers.onWorkoutFinished(_workoutId!);
+    await state.refresh();
+
+    if (!mounted) return;
+    // Prefer the strongest celebration this session earned.
+    if (summary.leveledUp) {
+      context.go('/level-up');
+    } else if (summary.streakMilestoneReached) {
+      context.go('/streak-milestone');
+    } else {
+      context.go(fallbackRoute);
+    }
+  }
+
+  String get _elapsed {
+    if (_startedAt == null) return '0:00';
+    final d = DateTime.now().difference(_startedAt!);
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const ScreenBase(
+        child: Center(
+          child: CircularProgressIndicator(color: AppPalette.teal),
+        ),
+      );
+    }
+    final ex = _exercise!;
+    final completedCount = _sets.where((s) => s.state == _SetState.completed).length;
+
     return ScreenBase(
       child: Stack(
         children: [
           Column(
             children: [
-              _Header(onBack: () => context.go('/home')),
-              _TargetRow(),
+              _Header(
+                exerciseName: ex.name,
+                setsCompleted: completedCount,
+                elapsed: _elapsed,
+                onClose: () => _finishAndGo('/home'),
+                onFinish: () => _finishAndGo('/workouts/$_workoutId'),
+              ),
+              _StatRow(
+                volume: _sets.fold<double>(
+                  0,
+                  (a, s) => a + ((s.weight ?? 0) * (s.reps ?? 0)),
+                ),
+                xp: _sessionXp,
+                sets: completedCount,
+              ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpace.s5,
-                    AppSpace.s1,
-                    AppSpace.s5,
                     AppSpace.s4,
+                    AppSpace.s5,
+                    AppSpace.s6,
                   ),
                   children: [
-                    ..._sets.map(
-                      (s) => Padding(
+                    for (final s in _sets)
+                      Padding(
                         padding: const EdgeInsets.only(bottom: AppSpace.s3),
                         child: _SetCard(
                           data: s,
                           reps: _reps,
                           weight: _weight,
                           onReps: (v) => setState(() => _reps = v.round()),
-                          onWeight: (v) => setState(() => _weight = v.toDouble()),
+                          onWeight: (v) =>
+                              setState(() => _weight = v.toDouble()),
                           onComplete: _completeSet,
                         ),
                       ),
-                    ),
-                    _AddSetButton(),
+                    _AddSetButton(onTap: _addSet),
                   ],
                 ),
               ),
               if (_resting)
-                _RestTimer(
+                _RestTimerBar(
                   restSec: _restSec,
                   onMinus: () => setState(
                     () => _restSec = (_restSec - 30).clamp(0, 9999),
@@ -182,9 +288,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 120,
+              bottom: _resting ? 120 : 80,
               child: Center(
-                child: XPToast(key: ValueKey(_toastKey), amount: 25),
+                child: XPToast(
+                  key: ValueKey(_toastKey),
+                  amount: _sessionXp == 0
+                      ? 0
+                      : (_exercise?.baseXp ?? 3) * 5,
+                ),
               ),
             ),
         ],
@@ -194,8 +305,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.onBack});
-  final VoidCallback onBack;
+  const _Header({
+    required this.exerciseName,
+    required this.setsCompleted,
+    required this.elapsed,
+    required this.onClose,
+    required this.onFinish,
+  });
+
+  final String exerciseName;
+  final int setsCompleted;
+  final String elapsed;
+  final VoidCallback onClose;
+  final VoidCallback onFinish;
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +335,7 @@ class _Header extends StatelessWidget {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: onBack,
+            onTap: onClose,
             child: Container(
               width: 40,
               height: 40,
@@ -222,9 +344,9 @@ class _Header extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
-                Icons.arrow_back_ios_new,
+                Icons.close,
                 color: AppPalette.textSecondary,
-                size: 16,
+                size: 18,
               ),
             ),
           ),
@@ -234,36 +356,44 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'EXERCISE 2 OF 6',
+                  '$setsCompleted SETS LOGGED · $elapsed',
                   style: AppType.label(color: AppPalette.textMuted).copyWith(
                     fontSize: 10,
                   ),
                 ),
                 Text(
-                  'BENCH PRESS',
+                  exerciseName.toUpperCase(),
                   style: AppType.displayMD(color: AppPalette.textPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          Text('18:42', style: AppType.monoMD(color: AppPalette.textMuted)),
+          GhostButton(label: 'FINISH', onTap: onFinish),
         ],
       ),
     );
   }
 }
 
-class _TargetRow extends StatelessWidget {
-  const _TargetRow();
-
-  static const _items = [
-    ('TARGET', '4 × 8'),
-    ('WEIGHT', '85 KG'),
-    ('REST', '90s'),
-  ];
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.volume,
+    required this.xp,
+    required this.sets,
+  });
+  final double volume;
+  final int xp;
+  final int sets;
 
   @override
   Widget build(BuildContext context) {
+    final items = [
+      ('VOLUME', '${volume.round()} kg'),
+      ('SESSION XP', '+$xp'),
+      ('SETS', '$sets'),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.s5,
@@ -272,12 +402,11 @@ class _TargetRow extends StatelessWidget {
         0,
       ),
       child: Row(
-        children: _items.map((x) {
+        children: items.asMap().entries.map((e) {
+          final isLast = e.key == items.length - 1;
           return Expanded(
             child: Padding(
-              padding: EdgeInsets.only(
-                right: x == _items.last ? 0 : AppSpace.s3,
-              ),
+              padding: EdgeInsets.only(right: isLast ? 0 : AppSpace.s3),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
@@ -289,13 +418,13 @@ class _TargetRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      x.$1,
+                      e.value.$1,
                       style: AppType.label(color: AppPalette.textMuted)
                           .copyWith(fontSize: 9),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      x.$2,
+                      e.value.$2,
                       style: AppType.monoMD(color: AppPalette.textPrimary),
                     ),
                   ],
@@ -328,166 +457,105 @@ class _SetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    switch (data.state) {
-      case _SetState.pending:
-        return Container(
-          padding: const EdgeInsets.all(AppSpace.s4),
-          decoration: BoxDecoration(
-            color: AppPalette.carbon,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppPalette.strokeHairline),
-          ),
-          child: Opacity(
-            opacity: 0.5,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 32,
-                  child: Text(
-                    '#${data.n}',
-                    style: AppType.monoMD(color: AppPalette.textMuted),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'PENDING · ${data.targetReps} × ${data.targetWeight}kg',
-                    style: AppType.bodySM(color: AppPalette.textMuted),
-                  ),
-                ),
-              ],
+    if (data.state == _SetState.completed) {
+      return Container(
+        padding: const EdgeInsets.all(AppSpace.s4),
+        decoration: BoxDecoration(
+          color: AppPalette.carbon,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppPalette.green.withValues(alpha: 0.33)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppPalette.green.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check, color: AppPalette.green, size: 16),
             ),
-          ),
-        );
-      case _SetState.completed:
-        return Container(
-          padding: const EdgeInsets.all(AppSpace.s4),
-          decoration: BoxDecoration(
-            color: AppPalette.carbon,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppPalette.green.withValues(alpha: 0.33)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: AppPalette.green.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: AppPalette.green,
-                  size: 16,
-                ),
+            const SizedBox(width: AppSpace.s4),
+            Text('#${data.n}',
+                style: AppType.monoMD(color: AppPalette.textPrimary)),
+            const SizedBox(width: AppSpace.s4),
+            Expanded(
+              child: Text(
+                '${data.reps} reps × ${data.weight} kg',
+                style: AppType.bodyMD(color: AppPalette.textPrimary),
               ),
-              const SizedBox(width: AppSpace.s4),
-              Text(
-                '#${data.n}',
-                style: AppType.monoMD(color: AppPalette.textPrimary),
-              ),
-              const SizedBox(width: AppSpace.s4),
-              Expanded(
-                child: Text(
-                  '${data.actualReps} × ${data.actualWeight}kg',
-                  style: AppType.bodyMD(color: AppPalette.textPrimary),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppPalette.green.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  data.diff ?? 'B',
-                  style: AppType.monoMD(color: AppPalette.green).copyWith(
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      case _SetState.active:
-        return NeonCard(
-          glow: GlowColor.purple,
-          padding: const EdgeInsets.all(AppSpace.s5),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '#${data.n}',
-                    style: AppType.monoMD(color: AppPalette.purple),
-                  ),
-                  const SizedBox(width: AppSpace.s3),
-                  Text(
-                    'ACTIVE SET',
-                    style: AppType.label(color: AppPalette.purple),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppPalette.xpGold.withValues(alpha: 0.13),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '+25 XP',
-                      style: AppType.label(color: AppPalette.xpGold).copyWith(
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpace.s4),
-              Row(
-                children: [
-                  Expanded(
-                    child: NumericStepper(
-                      value: weight,
-                      step: 2.5,
-                      label: 'WEIGHT',
-                      unit: 'kg',
-                      onChanged: onWeight,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.s3),
-                  Expanded(
-                    child: NumericStepper(
-                      value: reps,
-                      label: 'REPS',
-                      onChanged: onReps,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpace.s4),
-              PrimaryButton(
-                label: 'COMPLETE SET',
-                size: AppButtonSize.md,
-                onTap: onComplete,
-              ),
-            ],
-          ),
-        );
+            ),
+          ],
+        ),
+      );
     }
+
+    return NeonCard(
+      glow: GlowColor.purple,
+      padding: const EdgeInsets.all(AppSpace.s5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('#${data.n}',
+                  style: AppType.monoMD(color: AppPalette.purple)),
+              const SizedBox(width: AppSpace.s3),
+              Text('ACTIVE SET',
+                  style: AppType.label(color: AppPalette.purple)),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Row(
+            children: [
+              Expanded(
+                child: NumericStepper(
+                  value: weight,
+                  step: 2.5,
+                  label: 'WEIGHT',
+                  unit: 'kg',
+                  onChanged: onWeight,
+                ),
+              ),
+              const SizedBox(width: AppSpace.s3),
+              Expanded(
+                child: NumericStepper(
+                  value: reps,
+                  label: 'REPS',
+                  onChanged: onReps,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s4),
+          PrimaryButton(
+            label: 'COMPLETE SET',
+            size: AppButtonSize.md,
+            onTap: onComplete,
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _AddSetButton extends StatelessWidget {
+  const _AddSetButton({required this.onTap});
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.md),
-      child: DottedBorderBox(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: AppPalette.strokeSubtle),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
         child: Text(
           '+ ADD SET',
           style: AppType.label(color: AppPalette.textSecondary),
@@ -497,59 +565,8 @@ class _AddSetButton extends StatelessWidget {
   }
 }
 
-class DottedBorderBox extends StatelessWidget {
-  const DottedBorderBox({super.key, required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    // Simple dashed rectangle via DashedRectPainter.
-    return CustomPaint(
-      painter: _DashedRectPainter(color: AppPalette.strokeSubtle),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        alignment: Alignment.center,
-        child: child,
-      ),
-    );
-  }
-}
-
-class _DashedRectPainter extends CustomPainter {
-  _DashedRectPainter({required this.color});
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    const dash = 6.0;
-    const gap = 4.0;
-    final radius = const Radius.circular(AppRadius.md);
-    final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      radius,
-    );
-    final path = Path()..addRRect(rrect);
-    final metrics = path.computeMetrics();
-    for (final m in metrics) {
-      double dist = 0;
-      while (dist < m.length) {
-        final next = (dist + dash).clamp(0.0, m.length);
-        canvas.drawPath(m.extractPath(dist, next), paint);
-        dist = next + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedRectPainter oldDelegate) => false;
-}
-
-class _RestTimer extends StatelessWidget {
-  const _RestTimer({
+class _RestTimerBar extends StatelessWidget {
+  const _RestTimerBar({
     required this.restSec,
     required this.onMinus,
     required this.onPlus,
@@ -597,7 +614,7 @@ class _RestTimer extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                _RestButton(label: '-30s', onTap: onMinus),
+                _MiniBtn(label: '-30s', onTap: onMinus),
                 const SizedBox(width: AppSpace.s3),
                 Expanded(
                   child: Column(
@@ -605,10 +622,8 @@ class _RestTimer extends StatelessWidget {
                     children: [
                       Text(
                         'REST',
-                        style:
-                            AppType.label(color: AppPalette.textMuted).copyWith(
-                          fontSize: 9,
-                        ),
+                        style: AppType.label(color: AppPalette.textMuted)
+                            .copyWith(fontSize: 9),
                       ),
                       Text(
                         '$mm:$ss',
@@ -618,9 +633,9 @@ class _RestTimer extends StatelessWidget {
                     ],
                   ),
                 ),
-                _RestButton(label: 'SKIP', onTap: onSkip),
+                _MiniBtn(label: 'SKIP', onTap: onSkip),
                 const SizedBox(width: AppSpace.s3),
-                _RestButton(label: '+30s', onTap: onPlus),
+                _MiniBtn(label: '+30s', onTap: onPlus),
               ],
             ),
           ),
@@ -630,8 +645,8 @@ class _RestTimer extends StatelessWidget {
   }
 }
 
-class _RestButton extends StatelessWidget {
-  const _RestButton({required this.label, required this.onTap});
+class _MiniBtn extends StatelessWidget {
+  const _MiniBtn({required this.label, required this.onTap});
   final String label;
   final VoidCallback onTap;
 

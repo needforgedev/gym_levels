@@ -2,45 +2,75 @@ import 'package:flutter/foundation.dart';
 
 import '../data/models/player.dart';
 import '../data/services/player_service.dart';
+import '../data/services/streak_service.dart';
+import '../data/services/workout_service.dart';
+import '../game/xp_engine.dart';
 
-/// Thin cache over [PlayerService]. Screens that need player data read from
-/// this notifier; writes go through the service and finish with [refresh] so
-/// every observer sees the new value.
+/// Thin cache over the data services. Populated once from `main.dart` via
+/// `..refresh()` and re-populated after every write that changes something
+/// Home / Profile / etc. renders.
 ///
-/// Level / streak / XP are demo scalars today — they'll be backed by
-/// `WorkoutService` / `StreakService` / `XpService` in Phase 2.
+/// Level + XP bar are derived from `WorkoutService.totalXp()` through
+/// [XpEngine.resolve]. Streak is pulled from [StreakService.get]. Everything
+/// else that used to be a demo scalar is now real.
 class PlayerState extends ChangeNotifier {
   Player? _player;
-  int level = 1;
-  int streak = 0;
-  int xpCurrent = 0;
-  int xpMax = 100;
+  int _totalXp = 0;
+  int _level = 1;
+  int _xpCurrent = 0;
+  int _xpMax = 100;
+  int _streak = 0;
 
   Player? get player => _player;
   bool get hasPlayer => _player != null;
   bool get isOnboarded => _player?.isOnboarded ?? false;
-
-  /// Display name with a sensible fallback before the player row exists.
   String get playerName => _player?.displayName ?? 'Player';
 
-  double get xpPercent => xpMax == 0 ? 0 : xpCurrent / xpMax;
+  int get level => _level;
+  int get xpCurrent => _xpCurrent;
+  int get xpMax => _xpMax;
+  int get totalXp => _totalXp;
+  int get streak => _streak;
 
-  /// Called once from `main.dart` after `AppDb.init()`. Safe to call again
-  /// after any write that may have changed the row.
+  double get xpPercent {
+    if (_xpMax == 0) return 1.0;
+    return (_xpCurrent / _xpMax).clamp(0.0, 1.0);
+  }
+
+  /// Called from `main.dart` once and from every mutation path that changes
+  /// persisted player / workout / streak state.
   Future<void> refresh() async {
-    _player = await PlayerService.getPlayer();
+    final player = await PlayerService.getPlayer();
+    final totalXp = await WorkoutService.totalXp();
+    final snapshot = XpEngine.resolve(totalXp);
+    final streak = await StreakService.get();
+
+    _player = player;
+    _totalXp = totalXp;
+    _level = snapshot.level;
+    _xpCurrent = snapshot.xpInLevel;
+    _xpMax = snapshot.xpToNext == 0 ? 1 : snapshot.xpToNext;
+    _streak = streak?.current ?? 0;
+
     notifyListeners();
   }
 
-  void addXp(int amount) {
-    xpCurrent = (xpCurrent + amount).clamp(0, xpMax);
-    notifyListeners();
-  }
-
-  /// Kept for screens that already call this. Writes through the service and
-  /// refreshes the cache so the UI reflects the change.
+  /// Used by the onboarding name screen. Rewritten here so the screen keeps
+  /// its old call site.
   Future<void> setDisplayName(String name) async {
     await PlayerService.setDisplayName(name);
     await refresh();
+  }
+
+  /// Optimistic in-memory bump — the logger fires this alongside the real
+  /// SQLite write so the XP toast lands instantly. `refresh()` reconciles
+  /// with the DB afterwards.
+  void addXp(int amount) {
+    _totalXp += amount;
+    final snapshot = XpEngine.resolve(_totalXp);
+    _level = snapshot.level;
+    _xpCurrent = snapshot.xpInLevel;
+    _xpMax = snapshot.xpToNext == 0 ? 1 : snapshot.xpToNext;
+    notifyListeners();
   }
 }

@@ -60,4 +60,23 @@ class WorkoutService {
     );
     return (r.first['n'] as int?) ?? 0;
   }
+
+  /// Delete a workout. FK `ON DELETE CASCADE` on the `sets` table removes
+  /// every logged set in the same transaction.
+  static Future<void> delete(int id) async {
+    final db = await AppDb.instance;
+    await db.delete(T.workouts, where: '${CWorkout.id} = ?', whereArgs: [id]);
+  }
+
+  /// Lifetime XP (sum of `xp_earned` across finished workouts). Feeds
+  /// `XpEngine.resolve` so Home's level + XP bar reflect real data.
+  static Future<int> totalXp() async {
+    final db = await AppDb.instance;
+    final r = await db.rawQuery(
+      'SELECT COALESCE(SUM(${CWorkout.xpEarned}), 0) AS x '
+      'FROM ${T.workouts} WHERE ${CWorkout.userId} = ?',
+      [1],
+    );
+    return (r.first['x'] as num?)?.toInt() ?? 0;
+  }
 }

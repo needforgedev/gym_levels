@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../data/models/muscle_rank.dart';
+import '../data/models/quest.dart' as model;
 import '../data/services/analytics_service.dart';
+import '../data/services/muscle_rank_service.dart';
 import '../data/services/player_service.dart';
+import '../data/services/quest_service.dart';
+import '../data/services/workout_service.dart';
+import '../game/quest_engine.dart';
+import '../game/rank_engine.dart';
 import '../state/onboarding_flag.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
@@ -25,10 +32,33 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  late Future<List<model.Quest>> _dailyQuests;
+  late Future<List<MuscleRank>> _muscleRanks;
+
   @override
   void initState() {
     super.initState();
+    _dailyQuests = _loadDailyQuests();
+    _muscleRanks = MuscleRankService.getAll();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCompleteOnboarding());
+  }
+
+  /// Rotates the daily batch if none issued today, then returns what's active.
+  Future<List<model.Quest>> _loadDailyQuests() async {
+    await QuestEngine.rotateDailyIfNeeded();
+    return QuestService.active('daily');
+  }
+
+  /// Summary label for the muscle-ranks card — averages `rank_xp` across the
+  /// tracked muscles and maps the result back to a tier name.
+  String _overallLabel(List<MuscleRank> ranks) {
+    if (ranks.isEmpty) return 'NO DATA YET';
+    final avg =
+        (ranks.fold<int>(0, (a, r) => a + r.rankXp) / ranks.length).round();
+    final a = RankEngine.assign(avg);
+    return a.subRank == null
+        ? 'AVG: ${a.rank.toUpperCase()}'
+        : 'AVG: ${a.rank.toUpperCase()} ${a.subRank}';
   }
 
   /// Fires once on first Home render after the user finishes the onboarding
@@ -119,11 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpace.s4),
 
-          // Today's protocol
+          // Start Workout CTA — picks one of the 80 seeded exercises, creates
+          // a live session, persists every set via services.
           NeonCard(
             glow: GlowColor.purple,
             padding: const EdgeInsets.all(AppSpace.s5),
-            onTap: () => context.go('/workout'),
+            onTap: () => context.go('/exercise-picker'),
             child: Row(
               children: [
                 Expanded(
@@ -131,17 +162,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "TODAY'S PROTOCOL",
+                        'START WORKOUT',
                         style: AppType.label(color: AppPalette.purple),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'PUSH — CHEST & SHOULDERS',
+                        'PICK AN EXERCISE',
                         style: AppType.displayMD(color: AppPalette.textPrimary),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '6 exercises · ~52 min',
+                        'Log sets, weight, reps · offline-first',
                         style:
                             AppType.bodySM(color: AppPalette.textSecondary),
                       ),
@@ -169,6 +200,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpace.s4),
 
+          // Total Workouts card — reads from SQLite via FutureBuilder, taps
+          // through to the full history list.
+          _TotalWorkoutsCard(
+            onTap: () => context.go('/workouts'),
+          ),
+          const SizedBox(height: AppSpace.s4),
+
           // Active quests
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -186,71 +224,158 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: AppSpace.s3),
-          const QuestRow(
-            title: 'HIT 10,000 STEPS',
-            type: QuestType.daily,
-            progress: 0.72,
-            xp: 25,
-          ),
-          const SizedBox(height: AppSpace.s3),
-          const QuestRow(
-            title: 'COMPLETE PUSH DAY',
-            type: QuestType.daily,
-            progress: 0,
-            xp: 40,
+          FutureBuilder<List<model.Quest>>(
+            future: _dailyQuests,
+            builder: (ctx, snap) {
+              final quests = snap.data ?? const [];
+              if (quests.isEmpty) {
+                return Text(
+                  '> rotating today\'s quests…',
+                  style: AppType.system(color: AppPalette.textMuted),
+                );
+              }
+              return Column(
+                children: [
+                  for (final q in quests.take(2)) ...[
+                    QuestRow(
+                      title: q.title,
+                      type: QuestType.daily,
+                      progress: q.progressRatio,
+                      xp: q.xpReward,
+                    ),
+                    const SizedBox(height: AppSpace.s3),
+                  ],
+                ],
+              );
+            },
           ),
           const SizedBox(height: AppSpace.s4),
 
-          // Muscle ranks
+          // Muscle ranks — real data from RankEngine. Empty until the user
+          // logs their first sets.
           NeonCard(
             glow: GlowColor.none,
             padding: const EdgeInsets.all(AppSpace.s5),
             pulse: false,
             onTap: () => context.go('/profile'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+            child: FutureBuilder<List<MuscleRank>>(
+              future: _muscleRanks,
+              builder: (ctx, snap) {
+                final ranks = snap.data ?? const [];
+                final overall = _overallLabel(ranks);
+                // Show up to 5 most-trained muscles inline.
+                final top = [...ranks]
+                  ..sort((a, b) => b.rankXp.compareTo(a.rankXp));
+                final display = top.take(5).toList();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'MUSCLE RANKS',
+                                style: AppType.label(color: AppPalette.textMuted),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                overall,
+                                style: AppType.displayMD(
+                                  color: AppPalette.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const MuscleFigure(
+                          highlight: MuscleHighlight.chest,
+                          color: AppPalette.xpGold,
+                          size: 80,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.s4),
+                    if (display.isEmpty)
+                      Text(
+                        '> log a set to see your first rank.',
+                        style: AppType.system(color: AppPalette.textMuted),
+                      )
+                    else
+                      Row(
                         children: [
-                          Text(
-                            'MUSCLE RANKS',
-                            style: AppType.label(color: AppPalette.textMuted),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'AVG: GOLD II',
-                            style: AppType.displayMD(
-                              color: AppPalette.textPrimary,
+                          for (final r in display)
+                            _MuscleMini(
+                              name: r.muscle.toUpperCase(),
+                              rank: rankFromString(r.rank),
+                              sub: r.subRank ?? '—',
                             ),
-                          ),
                         ],
                       ),
-                    ),
-                    const MuscleFigure(
-                      highlight: MuscleHighlight.chest,
-                      color: AppPalette.xpGold,
-                      size: 80,
-                    ),
                   ],
-                ),
-                const SizedBox(height: AppSpace.s4),
-                Row(
-                  children: const [
-                    _MuscleMini(name: 'CHEST', rank: Rank.gold, sub: 'II'),
-                    _MuscleMini(name: 'BACK', rank: Rank.silver, sub: 'III'),
-                    _MuscleMini(name: 'LEGS', rank: Rank.gold, sub: 'I'),
-                    _MuscleMini(name: 'ARMS', rank: Rank.platinum, sub: 'I'),
-                    _MuscleMini(name: 'CORE', rank: Rank.silver, sub: 'II'),
-                  ],
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TotalWorkoutsCard extends StatelessWidget {
+  const _TotalWorkoutsCard({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return NeonCard(
+      glow: GlowColor.teal,
+      padding: const EdgeInsets.all(AppSpace.s5),
+      pulse: false,
+      onTap: onTap,
+      child: FutureBuilder<int>(
+        future: WorkoutService.totalFinished(),
+        builder: (ctx, snap) {
+          final count = snap.data ?? 0;
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'TOTAL WORKOUTS',
+                      style: AppType.label(color: AppPalette.teal),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$count',
+                      style: AppType.monoXL(color: AppPalette.teal).copyWith(
+                        fontSize: 40,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      count == 0
+                          ? 'your journey begins'
+                          : 'tap to view history',
+                      style: AppType.bodySM(color: AppPalette.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.history,
+                color: AppPalette.teal,
+                size: 32,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
