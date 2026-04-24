@@ -156,10 +156,19 @@ class PlanGenerator {
     final experience = await ExperienceService.get();
     final owned = Set<String>.from(experience?.equipment ?? const []);
     final avoid = _avoidedMuscles(experience?.limitations ?? const []);
+    final priority = goals?.priorityMuscles ?? const <String>[];
 
     // Pull the catalog once; filter in Dart (80 rows — trivially cheap).
     final catalog = await ExerciseService.getAll();
-    final muscles = _muscleGroupsByFocus[focus] ?? const ['chest'];
+    final focusMuscles = _muscleGroupsByFocus[focus] ?? const ['chest'];
+
+    // Reorder muscles: any muscle the user flagged as a priority leads the
+    // list so it always gets a compound slot, even if we later hit the
+    // session-length cap.
+    final muscles = <String>[
+      ...focusMuscles.where(priority.contains),
+      ...focusMuscles.where((m) => !priority.contains(m)),
+    ];
 
     final picks = <PlannedExercise>[];
     final (sets, reps) = _setsReps(goals?.bodyType);
@@ -177,6 +186,8 @@ class PlanGenerator {
           .toList();
       if (candidates.isEmpty) continue;
 
+      final isPriority = priority.contains(m);
+
       // Prefer 1 compound (baseXp >= 5) per muscle; fall back to the first
       // available exercise for that muscle (bodyweight-only setups often
       // have no compound rated ≥5 but we still want a prescription).
@@ -187,13 +198,16 @@ class PlanGenerator {
       picks.add(PlannedExercise(
         exerciseId: compound.id!,
         name: compound.name,
-        sets: sets,
+        sets: isPriority ? sets + 1 : sets,
         reps: reps,
+        isPriority: isPriority,
       ));
       usedIds.add(compound.id!);
 
-      // One accessory to round out big muscle groups.
-      if (muscles.length <= 3) {
+      // Accessory: always added for priority muscles (extra volume where
+      // the user asked for it). For non-priority muscles, only on smaller
+      // muscle groups so we don't blow the session-length cap.
+      if (isPriority || muscles.length <= 3) {
         final accessory = candidates.firstWhere(
           (e) => e.id != compound.id && !usedIds.contains(e.id!),
           orElse: () => Exercise(name: '', primaryMuscle: ''),
@@ -204,8 +218,39 @@ class PlanGenerator {
             name: accessory.name,
             sets: sets,
             reps: reps + 2, // accessories get 2 more reps
+            isPriority: isPriority,
           ));
           usedIds.add(accessory.id!);
+        }
+      }
+    }
+
+    // If today's focus doesn't overlap with the user's priority muscles at
+    // all, append one bonus priority exercise — users flagged those muscles
+    // because they want them hit *every* session.
+    if (priority.isNotEmpty &&
+        !focusMuscles.any(priority.contains) &&
+        picks.isNotEmpty) {
+      for (final pm in priority) {
+        if (avoid.contains(pm)) continue;
+        final bonus = catalog.firstWhere(
+          (e) =>
+              e.primaryMuscle == pm &&
+              _equipmentOk(e, owned) &&
+              e.id != null &&
+              !usedIds.contains(e.id!),
+          orElse: () => Exercise(name: '', primaryMuscle: ''),
+        );
+        if (bonus.id != null) {
+          picks.add(PlannedExercise(
+            exerciseId: bonus.id!,
+            name: bonus.name,
+            sets: sets,
+            reps: reps + 2,
+            isPriority: true,
+          ));
+          usedIds.add(bonus.id!);
+          break;
         }
       }
     }
@@ -252,10 +297,16 @@ class PlannedExercise {
     required this.name,
     required this.sets,
     required this.reps,
+    this.isPriority = false,
   });
 
   final int exerciseId;
   final String name;
   final int sets;
   final int reps;
+
+  /// True when the exercise hits one of the user's priority muscles from
+  /// onboarding (or was added as the "bonus priority" pick when today's
+  /// focus didn't overlap). Drives the PRIORITY tag on Today's Workout.
+  final bool isPriority;
 }

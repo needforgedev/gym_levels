@@ -94,6 +94,7 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
         name: picked.name,
         sets: current.sets,
         reps: current.reps,
+        isPriority: current.isPriority,
       );
     });
   }
@@ -495,9 +496,33 @@ class _ExerciseCard extends StatelessWidget {
               ),
               const SizedBox(width: AppSpace.s4),
               Expanded(
-                child: Text(
-                  exercise.name,
-                  style: AppType.bodyLG(color: AppPalette.textPrimary),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: AppType.bodyLG(color: AppPalette.textPrimary),
+                    ),
+                    if (exercise.isPriority) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.star,
+                            color: AppPalette.yellow,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'PRIORITY MUSCLE',
+                            style: AppType.label(color: AppPalette.yellow)
+                                .copyWith(fontSize: 9),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
               InkWell(
