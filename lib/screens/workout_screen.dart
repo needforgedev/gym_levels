@@ -33,9 +33,21 @@ class _SetData {
 }
 
 class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key, required this.exerciseId});
+  const WorkoutScreen({
+    super.key,
+    required this.exerciseId,
+    this.queue = const [],
+  });
 
+  /// The exercise to log right now.
   final int exerciseId;
+
+  /// Remaining exercises in the session after the current one. When non-empty,
+  /// the logger shows a progress header and a `NEXT EXERCISE` CTA that swaps
+  /// in the next id without ending the workout row. Passed through from
+  /// Today's Workout so a prescribed 3-exercise session is tracked as one
+  /// workout instead of three isolated ones.
+  final List<int> queue;
 
   @override
   State<WorkoutScreen> createState() => _WorkoutScreenState();
@@ -55,14 +67,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   int _sessionXp = 0;
   DateTime? _startedAt;
 
+  // Multi-exercise session state.
+  late int _currentExerciseId;
+  late List<int> _remaining;
+  int _exerciseIndex = 0; // 1-based display = _exerciseIndex + 1
+  late final int _totalExercises;
+
   @override
   void initState() {
     super.initState();
+    _currentExerciseId = widget.exerciseId;
+    _remaining = List<int>.from(widget.queue);
+    _totalExercises = 1 + widget.queue.length;
     _boot();
   }
 
   Future<void> _boot() async {
-    final ex = await ExerciseService.byId(widget.exerciseId);
+    final ex = await ExerciseService.byId(_currentExerciseId);
     if (!mounted) return;
     if (ex == null) {
       context.go('/home');
@@ -75,6 +96,26 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       _workoutId = id;
       _startedAt = DateTime.now();
       _loading = false;
+    });
+  }
+
+  Future<void> _advanceToNextExercise() async {
+    if (_remaining.isEmpty) return;
+    final nextId = _remaining.removeAt(0);
+    final ex = await ExerciseService.byId(nextId);
+    if (!mounted || ex == null) return;
+    _restTimer?.cancel();
+    setState(() {
+      _currentExerciseId = nextId;
+      _exercise = ex;
+      _exerciseIndex += 1;
+      _sets
+        ..clear()
+        ..add(_SetData(n: 1, state: _SetState.active));
+      _reps = 8;
+      _weight = 20;
+      _resting = false;
+      _restSec = 90;
     });
   }
 
@@ -108,7 +149,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     // Simple rule — a set is a PR if it out-volumes every prior set of the
     // same exercise (weight × reps). Uses SetsService.bestFor which already
     // orders by weight DESC, reps DESC.
-    final prior = await SetsService.bestFor(widget.exerciseId);
+    final prior = await SetsService.bestFor(_currentExerciseId);
     final priorVolume = prior == null
         ? 0
         : (prior.weightKg ?? 0) * prior.reps;
@@ -116,7 +157,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final isPr = prior != null && thisVolume > priorVolume;
 
     final xpEarned = await GameHandlers.xpForSet(
-      exerciseId: widget.exerciseId,
+      exerciseId: _currentExerciseId,
       rpe: null, // RPE capture lands in a later Phase 2 polish pass
       isPr: isPr,
     );
@@ -124,7 +165,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await SetsService.insertSet(WorkoutSet(
       workoutId: _workoutId!,
-      exerciseId: widget.exerciseId,
+      exerciseId: _currentExerciseId,
       setNumber: _sets[idx].n,
       weightKg: _weight,
       reps: _reps,
@@ -165,20 +206,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       return;
     }
 
-    final completed = _sets.where((s) => s.state == _SetState.completed).toList();
-    if (completed.isEmpty) {
+    // Capture the PlayerState before any awaits so we don't lint-trip on
+    // `context.read` across async gaps.
+    final state = context.read<PlayerState>();
+
+    // Pull the full set list from the DB — we aggregate across every
+    // exercise in a multi-exercise session, not just the one currently on
+    // screen.
+    final allSets = await SetsService.forWorkout(_workoutId!);
+    if (allSets.isEmpty) {
       await WorkoutService.delete(_workoutId!);
       if (!mounted) return;
       context.go(fallbackRoute);
       return;
     }
 
-    final volume = completed.fold<double>(
-      0,
-      (a, s) => a + ((s.weight ?? 0) * (s.reps ?? 0)),
-    );
+    final volume = await SetsService.volumeFor(_workoutId!);
 
-    final state = context.read<PlayerState>();
     await WorkoutService.finish(
       _workoutId!,
       xpEarned: _sessionXp,
@@ -220,6 +264,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
     final ex = _exercise!;
     final completedCount = _sets.where((s) => s.state == _SetState.completed).length;
+    final hasQueue = _totalExercises > 1;
+    final hasNext = _remaining.isNotEmpty;
+    final canAdvance = hasNext && completedCount > 0;
 
     return ScreenBase(
       child: Stack(
@@ -230,6 +277,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 exerciseName: ex.name,
                 setsCompleted: completedCount,
                 elapsed: _elapsed,
+                sessionProgress: hasQueue
+                    ? 'EXERCISE ${_exerciseIndex + 1} OF $_totalExercises'
+                    : null,
                 onClose: () => _finishAndGo('/home'),
                 onFinish: () => _finishAndGo('/workouts/$_workoutId'),
               ),
@@ -264,6 +314,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         ),
                       ),
                     _AddSetButton(onTap: _addSet),
+                    if (hasNext) ...[
+                      const SizedBox(height: AppSpace.s4),
+                      _NextExerciseButton(
+                        enabled: canAdvance,
+                        onTap: canAdvance ? _advanceToNextExercise : null,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -311,6 +368,7 @@ class _Header extends StatelessWidget {
     required this.elapsed,
     required this.onClose,
     required this.onFinish,
+    this.sessionProgress,
   });
 
   final String exerciseName;
@@ -318,6 +376,10 @@ class _Header extends StatelessWidget {
   final String elapsed;
   final VoidCallback onClose;
   final VoidCallback onFinish;
+
+  /// "EXERCISE 2 OF 3" when the logger is walking through a prescribed
+  /// multi-exercise session; `null` for a single-exercise entry.
+  final String? sessionProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -356,10 +418,14 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$setsCompleted SETS LOGGED · $elapsed',
-                  style: AppType.label(color: AppPalette.textMuted).copyWith(
-                    fontSize: 10,
-                  ),
+                  sessionProgress == null
+                      ? '$setsCompleted SETS LOGGED · $elapsed'
+                      : '$sessionProgress · $setsCompleted SETS · $elapsed',
+                  style: AppType.label(
+                    color: sessionProgress == null
+                        ? AppPalette.textMuted
+                        : AppPalette.teal,
+                  ).copyWith(fontSize: 10),
                 ),
                 Text(
                   exerciseName.toUpperCase(),
@@ -559,6 +625,46 @@ class _AddSetButton extends StatelessWidget {
         child: Text(
           '+ ADD SET',
           style: AppType.label(color: AppPalette.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+class _NextExerciseButton extends StatelessWidget {
+  const _NextExerciseButton({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? AppPalette.teal : AppPalette.textMuted;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: color),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          boxShadow: enabled
+              ? [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 12)]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              enabled ? 'NEXT EXERCISE' : 'LOG A SET FIRST',
+              style: AppType.label(color: color),
+            ),
+            if (enabled) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward, color: color, size: 16),
+            ],
+          ],
         ),
       ),
     );

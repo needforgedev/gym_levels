@@ -26,6 +26,7 @@ import 'screens/session_minutes_screen.dart';
 import 'screens/streak_milestone_screen.dart';
 import 'screens/streak_screen.dart';
 import 'screens/target_weight_screen.dart';
+import 'screens/todays_workout_screen.dart';
 import 'screens/tenure_screen.dart';
 import 'screens/training_days_screen.dart';
 import 'screens/training_styles_screen.dart';
@@ -179,14 +180,29 @@ final appRouter = GoRouter(
     // In-app tabs + post-onboarding
     GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
     GoRoute(
+      path: '/home/todays-workout',
+      builder: (_, _) => const TodaysWorkoutScreen(),
+    ),
+    GoRoute(
       path: '/exercise-picker',
       builder: (_, _) => const ExercisePickerScreen(),
     ),
     GoRoute(
       path: '/workout/new/:exerciseId',
-      builder: (ctx, state) => WorkoutScreen(
-        exerciseId: int.parse(state.pathParameters['exerciseId']!),
-      ),
+      builder: (ctx, state) {
+        final queueParam = state.uri.queryParameters['queue'];
+        final queue = (queueParam == null || queueParam.isEmpty)
+            ? const <int>[]
+            : queueParam
+                .split(',')
+                .map((s) => int.tryParse(s))
+                .whereType<int>()
+                .toList();
+        return WorkoutScreen(
+          exerciseId: int.parse(state.pathParameters['exerciseId']!),
+          queue: queue,
+        );
+      },
     ),
     GoRoute(
       path: '/workouts',

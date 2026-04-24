@@ -79,4 +79,25 @@ class WorkoutService {
     );
     return (r.first['x'] as num?)?.toInt() ?? 0;
   }
+
+  /// Most recent finished workout whose `ended_at` falls on the current
+  /// local calendar day. `null` if the user hasn't finished anything today.
+  /// Drives the "already done" state on Home + Today's Workout.
+  static Future<Workout?> finishedToday() async {
+    final db = await AppDb.instance;
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day)
+            .millisecondsSinceEpoch ~/
+        1000;
+    final rows = await db.query(
+      T.workouts,
+      where: '${CWorkout.userId} = ? '
+          'AND ${CWorkout.endedAt} IS NOT NULL '
+          'AND ${CWorkout.endedAt} >= ?',
+      whereArgs: [1, startOfDay],
+      orderBy: '${CWorkout.endedAt} DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Workout.fromRow(rows.first);
+  }
 }

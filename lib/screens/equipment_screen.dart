@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../data/services/experience_service.dart';
+import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/chips.dart';
 import '../widgets/neon_card.dart';
@@ -31,9 +33,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
 
   Future<void> _save() async {
     if (_selected.isEmpty) return;
+    final onboarded = context.read<PlayerState>().isOnboarded;
     await ExperienceService.patch(equipment: _selected);
     if (!mounted) return;
-    context.go('/limitations');
+    context.go(onboarded ? '/home' : '/limitations');
   }
 
   static const _options = [
@@ -50,13 +53,14 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.experience,
       percent: 38,
       kicker: 'COMBAT EXPERIENCE',
       subtitle: '…scanning available armoury.',
       nextEnabled: _selected.isNotEmpty,
-      onBack: () => context.go('/tenure'),
+      onBack: () => context.go(onboarded ? '/home' : '/tenure'),
       onNext: _save,
       child: NeonCard(
         glow: GlowColor.yellow,

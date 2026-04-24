@@ -7,8 +7,10 @@ import '../data/models/quest.dart' as model;
 import '../data/services/analytics_service.dart';
 import '../data/services/muscle_rank_service.dart';
 import '../data/services/player_service.dart';
+import '../data/models/workout.dart';
 import '../data/services/quest_service.dart';
 import '../data/services/workout_service.dart';
+import '../game/plan_generator.dart';
 import '../game/quest_engine.dart';
 import '../game/rank_engine.dart';
 import '../state/onboarding_flag.dart';
@@ -149,53 +151,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpace.s4),
 
-          // Start Workout CTA — picks one of the 80 seeded exercises, creates
-          // a live session, persists every set via services.
-          NeonCard(
-            glow: GlowColor.purple,
-            padding: const EdgeInsets.all(AppSpace.s5),
-            onTap: () => context.go('/exercise-picker'),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'START WORKOUT',
-                        style: AppType.label(color: AppPalette.purple),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'PICK AN EXERCISE',
-                        style: AppType.displayMD(color: AppPalette.textPrimary),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Log sets, weight, reps · offline-first',
-                        style:
-                            AppType.bodySM(color: AppPalette.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppPalette.purple,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: AppPalette.purple, blurRadius: 16),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: AppPalette.obsidian,
-                    size: 22,
-                  ),
-                ),
-              ],
+          // Today's Session — surfaces the PlanGenerator output. Rest day
+          // falls back to a "pick any" escape hatch to the exercise picker.
+          _TodaysSessionCard(),
+          const SizedBox(height: AppSpace.s3),
+          Align(
+            alignment: Alignment.centerRight,
+            child: GhostButton(
+              label: 'OR PICK ANY EXERCISE →',
+              onTap: () => context.go('/exercise-picker'),
             ),
           ),
           const SizedBox(height: AppSpace.s4),
@@ -323,6 +287,162 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _TodaysSessionCard extends StatelessWidget {
+  Future<_SessionCardState> _load() async {
+    final results = await Future.wait([
+      PlanGenerator.todaysSession(),
+      WorkoutService.finishedToday(),
+    ]);
+    return _SessionCardState(
+      plan: results[0] as SessionPlan?,
+      doneToday: results[1] as Workout?,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_SessionCardState>(
+      future: _load(),
+      builder: (ctx, snap) {
+        final data = snap.data;
+        final plan = data?.plan;
+        final done = data?.doneToday;
+        final settled = snap.connectionState == ConnectionState.done;
+        final didToday = done != null;
+        final noScheduleYet = settled && plan == null && !didToday;
+        final noMatches =
+            !didToday && plan != null && plan.exercises.isEmpty;
+        final isOptional =
+            !didToday && plan != null && !plan.isScheduled;
+
+        // Five states, distinguished by tap target and copy:
+        //   0) done today         → "/workouts/<id>"      (green, check)
+        //   1) no schedule        → "/training-days"      (teal, play)
+        //   2) no equipment match → "/equipment"          (teal, tune)
+        //   3) optional day       → "/home/todays-workout" (teal, moon)
+        //   4) scheduled          → "/home/todays-workout" (purple, play)
+        final String tapRoute;
+        if (didToday) {
+          tapRoute = '/workouts/${done.id}';
+        } else if (noScheduleYet) {
+          tapRoute = '/training-days';
+        } else if (noMatches) {
+          tapRoute = '/equipment';
+        } else {
+          tapRoute = '/home/todays-workout';
+        }
+
+        final Color accent;
+        final GlowColor glow;
+        if (didToday) {
+          accent = AppPalette.green;
+          glow = GlowColor.green;
+        } else if (noScheduleYet || noMatches || isOptional) {
+          accent = AppPalette.teal;
+          glow = GlowColor.teal;
+        } else {
+          accent = AppPalette.purple;
+          glow = GlowColor.purple;
+        }
+
+        final IconData icon;
+        if (didToday) {
+          icon = Icons.check;
+        } else if (noMatches) {
+          icon = Icons.tune;
+        } else if (isOptional) {
+          icon = Icons.bedtime;
+        } else {
+          icon = Icons.play_arrow;
+        }
+
+        final String kicker;
+        final String title;
+        final String subtitle;
+        if (didToday) {
+          kicker = 'COMPLETED TODAY';
+          title = (plan?.focus ?? 'SESSION LOGGED');
+          final xp = done.xpEarned;
+          final vol = done.volumeKg.round();
+          subtitle = 'Tap to view session · +$xp XP · ${vol}kg volume';
+        } else if (noScheduleYet) {
+          kicker = 'NO SCHEDULE SET';
+          title = 'PICK TRAINING DAYS';
+          subtitle = 'Tap to set your weekly training days.';
+        } else if (noMatches) {
+          kicker = 'EQUIPMENT MISSING';
+          title = plan.focus;
+          subtitle =
+              'No exercises match your gear for ${plan.focus.toLowerCase()} day. Tap to add equipment.';
+        } else if (isOptional) {
+          kicker = 'OPTIONAL · NOT SCHEDULED';
+          title = plan.focus;
+          subtitle =
+              '${plan.exercises.length} exercises · today is a rest day, train anyway?';
+        } else {
+          kicker = "TODAY'S PROTOCOL";
+          title = plan?.focus ?? 'LOADING…';
+          subtitle = plan == null
+              ? '…calibrating your session'
+              : '${plan.exercises.length} exercises · ~${plan.estimatedMinutes} min';
+        }
+
+        return NeonCard(
+          glow: glow,
+          padding: const EdgeInsets.all(AppSpace.s5),
+          onTap: () => GoRouter.of(context).go(tapRoute),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(kicker, style: AppType.label(color: accent)),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      style:
+                          AppType.displayMD(color: AppPalette.textPrimary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style:
+                          AppType.bodySM(color: AppPalette.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: accent, blurRadius: 16),
+                  ],
+                ),
+                child: Icon(
+                  icon,
+                  color: AppPalette.obsidian,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SessionCardState {
+  const _SessionCardState({required this.plan, required this.doneToday});
+  final SessionPlan? plan;
+  final Workout? doneToday;
 }
 
 class _TotalWorkoutsCard extends StatelessWidget {

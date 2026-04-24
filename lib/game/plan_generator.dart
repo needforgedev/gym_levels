@@ -119,17 +119,35 @@ class PlanGenerator {
     return out;
   }
 
-  /// The public entry point. Returns a `SessionPlan` if today is a scheduled
-  /// training day, `null` if it's a rest day or no schedule has been set.
+  /// The public entry point. Always returns a `SessionPlan` as long as the
+  /// user has at least one scheduled training day — on non-scheduled days
+  /// the returned plan has `isScheduled: false` and its focus is the next
+  /// upcoming scheduled day's focus (so users get a useful preview /
+  /// "optional training" session instead of an empty Home).
+  ///
+  /// Returns `null` only when no schedule has been set at all (onboarding
+  /// wasn't finished). Callers render a "set your training days" empty
+  /// state in that case.
   static Future<SessionPlan?> todaysSession() async {
     final schedule = await ScheduleService.get();
     if (schedule == null || schedule.days.isEmpty) return null;
 
     final today = _todayIndex();
     final sortedDays = [...schedule.days]..sort();
-    if (!sortedDays.contains(today)) return null; // rest day
+    final isScheduled = sortedDays.contains(today);
 
-    final dayPos = sortedDays.indexOf(today);
+    // Pick the bucket position. On a scheduled day, use today's index in the
+    // sorted list; on a rest day, use the next upcoming scheduled day
+    // (wraps to index 0 if today is after the last scheduled day of the
+    // week) — gives the user a preview of what's coming.
+    final int dayPos;
+    if (isScheduled) {
+      dayPos = sortedDays.indexOf(today);
+    } else {
+      final upcoming = sortedDays.indexWhere((d) => d > today);
+      dayPos = upcoming >= 0 ? upcoming : 0;
+    }
+
     final splitBucket = _splitByDays[sortedDays.length] ??
         List<String>.filled(sortedDays.length, 'full');
     final focus = splitBucket[dayPos % splitBucket.length];
@@ -150,31 +168,34 @@ class PlanGenerator {
     for (final m in muscles) {
       if (avoid.contains(m)) continue;
 
-      final candidates = catalog.where((e) =>
-          e.primaryMuscle == m &&
-          _equipmentOk(e, owned) &&
-          e.id != null &&
-          !usedIds.contains(e.id!));
+      final candidates = catalog
+          .where((e) =>
+              e.primaryMuscle == m &&
+              _equipmentOk(e, owned) &&
+              e.id != null &&
+              !usedIds.contains(e.id!))
+          .toList();
+      if (candidates.isEmpty) continue;
 
-      // Prefer 1 compound (baseXp >= 5) per muscle when available.
+      // Prefer 1 compound (baseXp >= 5) per muscle; fall back to the first
+      // available exercise for that muscle (bodyweight-only setups often
+      // have no compound rated ≥5 but we still want a prescription).
       final compound = candidates.firstWhere(
         (e) => e.baseXp >= 5,
-        orElse: () => Exercise(name: '', primaryMuscle: ''),
+        orElse: () => candidates.first,
       );
-      if (compound.id != null) {
-        picks.add(PlannedExercise(
-          exerciseId: compound.id!,
-          name: compound.name,
-          sets: sets,
-          reps: reps,
-        ));
-        usedIds.add(compound.id!);
-      }
+      picks.add(PlannedExercise(
+        exerciseId: compound.id!,
+        name: compound.name,
+        sets: sets,
+        reps: reps,
+      ));
+      usedIds.add(compound.id!);
 
       // One accessory to round out big muscle groups.
       if (muscles.length <= 3) {
         final accessory = candidates.firstWhere(
-          (e) => e.baseXp < 5 && !usedIds.contains(e.id!),
+          (e) => e.id != compound.id && !usedIds.contains(e.id!),
           orElse: () => Exercise(name: '', primaryMuscle: ''),
         );
         if (accessory.id != null) {
@@ -194,12 +215,15 @@ class PlanGenerator {
     final cap = (minutes / 6).floor().clamp(4, 8);
     final clipped = picks.take(cap).toList();
 
-    if (clipped.isEmpty) return null;
-
+    // Always return a SessionPlan when the user has a schedule — even if no
+    // catalog exercises survived the filter. Callers use `exercises.isEmpty`
+    // to render a "no equipment matches" state, distinct from "no schedule
+    // at all" (which is the only case that returns null).
     return SessionPlan(
       focus: _focusLabel(focus),
       exercises: clipped,
       estimatedMinutes: minutes,
+      isScheduled: isScheduled,
     );
   }
 }
@@ -209,11 +233,17 @@ class SessionPlan {
     required this.focus,
     required this.exercises,
     required this.estimatedMinutes,
+    this.isScheduled = true,
   });
 
   final String focus;
   final List<PlannedExercise> exercises;
   final int estimatedMinutes;
+
+  /// `true` when today's weekday is in `schedule.days`; `false` means this
+  /// plan is an **optional** suggestion (user is off-schedule but we're
+  /// still happy to show the next upcoming session).
+  final bool isScheduled;
 }
 
 class PlannedExercise {

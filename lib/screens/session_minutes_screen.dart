@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../data/services/schedule_service.dart';
+import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/neon_card.dart';
 import '../widgets/onboarding_radio_tile.dart';
@@ -31,9 +33,10 @@ class _SessionMinutesScreenState extends State<SessionMinutesScreen> {
 
   Future<void> _save() async {
     if (_minutes == null) return;
+    final onboarded = context.read<PlayerState>().isOnboarded;
     await ScheduleService.patch(sessionMinutes: _minutes);
     if (!mounted) return;
-    context.go('/calibrating/5');
+    context.go(onboarded ? '/home' : '/calibrating/5');
   }
 
   static const _options = [
@@ -45,13 +48,14 @@ class _SessionMinutesScreenState extends State<SessionMinutesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.operations,
       percent: 70,
       kicker: 'DAILY OPERATIONS',
       subtitle: '…sizing session window.',
       nextEnabled: _minutes != null,
-      onBack: () => context.go('/training-days'),
+      onBack: () => context.go(onboarded ? '/home' : '/training-days'),
       onNext: _save,
       child: NeonCard(
         glow: GlowColor.green,

@@ -21,7 +21,7 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
 | **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
-| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines (XP / Rank / Quest / Streak / PlanGen) **done** ✓ + §2.2 core wiring; remaining: 2.3 Today's Workout screen, 2.4 Muscle Rankings drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
+| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + §2.3 Today's Workout screen **done** ✓; remaining: 2.4 Muscle Rankings drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[ ]` not started |
 | **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
 
@@ -400,14 +400,21 @@ Persistence-only slice **already landed** in §1.9 so the app demos as a real tr
 - [ ] Rest timer persists across backgrounding (don't lose the countdown if user leaves app mid-rest)
 - [ ] Haptics: light on set complete, success on level-up
 
-## 2.3 Today's Workout screen (new, not in Phase 0)
-Per PRD §9A.2.
-- [ ] Route `/home/todays-workout`
-- [ ] Session summary chip-row (category / duration / exercises count)
-- [ ] Muscle split % tags color-coded by recency
-- [ ] "Why this workout?" expandable (System-voice rationale)
-- [ ] Exercise cards with Swap (sheet of 3 alternates by muscle + equipment + limitations)
-- [ ] Edit mode (drag handle + delete icon, Add exercise) writing to `workout_overrides`
+## 2.3 Today's Workout screen — [lib/screens/todays_workout_screen.dart](lib/screens/todays_workout_screen.dart)
+Per PRD §9A.2. Surfaces [PlanGenerator.todaysSession()](lib/game/plan_generator.dart).
+
+- [x] Route `/home/todays-workout` wired in [lib/router.dart](lib/router.dart)
+- [x] Session summary chip-row (focus / duration / exercises count) — teal/purple/amber tier colors
+- [x] Muscle split tags — muscles in today's focus, priority muscles (from `goals.priority_muscles`) highlighted amber, others slate
+- [x] "Why this workout?" expandable — System-voice rationale derived from focus + body type + priority muscles
+- [x] Exercise cards per slot — 1-based index badge, exercise name, per-set chips showing prescribed reps, "SWAP" pill trailing
+- [x] Swap bottom sheet — surfaces up to 3 alternates filtered by same `primary_muscle`; tap replaces the slot (in-memory for v1)
+- [x] Start Workout CTA (sticky bottom, teal primary) — launches the live logger against the first prescribed exercise
+- [x] Rest-day state — when PlanGenerator returns null (today not in `schedule.days`), show "RECOVERY IS A BUFF" card + "LOG FREE WORKOUT" secondary link to the exercise picker
+- [x] Home wiring — replaced generic "Start Workout" card with `_TodaysSessionCard` (reads real `SessionPlan` via FutureBuilder); rest day flips to teal with a bedtime icon; small "OR PICK ANY EXERCISE →" ghost link preserves the direct-pick fallback
+- [ ] Equipment / limitation filter on the Swap sheet — v1 filters by muscle only; equipment + limitation pass-through reuses the PlanGenerator filter; wire in next polish pass
+- [ ] Edit mode (drag handle + delete icon + "Add exercise") writing to `workout_overrides` — deferred; the "Swap" button already covers the most common edit
+- [ ] Multi-exercise workout session — Start Workout launches with the first planned exercise only; walking through all planned slots in one continuous session needs the logger's `+ Add Exercise` work in §2.2
 
 ## 2.4 Muscle Rankings drill-down (new)
 Per PRD §9A.4.
@@ -666,7 +673,7 @@ Phase 1 parked:  1.7 (backup/restore), 1.8 (airplane-mode integration tests)
 Phase 2.1 (XpEngine / RankEngine / QuestEngine / StreakEngine / PlanGenerator + GameHandlers) ✓ done
 Phase 2.2 (logger gamification wiring: real XP per set, PR detect, rank recompute, level-up + milestone nav) ✓ done core
     ↓
-Phase 2.3 Today's Workout screen  ─┐ surfaces PlanGenerator output
+Phase 2.3 Today's Workout screen  ✓ done — surfaces PlanGenerator output
 Phase 2.4 Muscle Rankings drill-down
 Phase 2.5 notifications          ─┤ flutter_local_notifications
 Phase 2.6 paywall + IAP          ─┘ in_app_purchase + cached entitlement
@@ -676,7 +683,7 @@ Phase 2.8 crash reporting (sentry_flutter)
 Phase 3 polish + launch
 ```
 
-**Current critical path:** **Phase 2.3 Today's Workout screen**. The PlanGenerator service is ready; surfacing it on a "today's session" screen unlocks "tap → start → log against the generated session" which is the tightest demo loop. Notifications (§2.5) and paywall (§2.6) are independent of the gameplay engines and can proceed in parallel.
+**Current critical path:** **Phase 2.4 Muscle Rankings drill-down** (already valuable — the rank engine is producing real per-muscle data on every workout save) or **Phase 2.5 local notifications** (workout reminders + streak warnings drive retention). Notifications and paywall are independent of the remaining gameplay engines and can proceed in parallel.
 
 ---
 

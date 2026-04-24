@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../data/services/schedule_service.dart';
+import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
@@ -35,9 +37,10 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
 
   Future<void> _save() async {
     if (_days.length < 2) return;
+    final onboarded = context.read<PlayerState>().isOnboarded;
     await ScheduleService.patch(days: _days.toList()..sort());
     if (!mounted) return;
-    context.go('/session-minutes');
+    context.go(onboarded ? '/home' : '/session-minutes');
   }
 
   void _applyPreset(String preset) {
@@ -77,13 +80,14 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.operations,
       percent: 65,
       kicker: 'DAILY OPERATIONS',
       subtitle: '…locking weekly tempo.',
       nextEnabled: _days.length >= 2,
-      onBack: () => context.go('/calibrating/4'),
+      onBack: () => context.go(onboarded ? '/home' : '/calibrating/4'),
       onNext: _save,
       child: NeonCard(
         glow: GlowColor.green,
