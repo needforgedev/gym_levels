@@ -80,6 +80,29 @@ class RankEngine {
     return 'III';
   }
 
+  /// Fraction (0.0 – 1.0) through the current tier. Master and Grandmaster
+  /// are flat — return 1.0 since they're terminal bands.
+  static double progressInTier(int rankXp) {
+    if (rankXp < 0) rankXp = 0;
+    if (rankXp < bronzeMax) return rankXp / bronzeMax;
+    if (rankXp < silverMax) {
+      return (rankXp - bronzeMax) / (silverMax - bronzeMax);
+    }
+    if (rankXp < goldMax) {
+      return (rankXp - silverMax) / (goldMax - silverMax);
+    }
+    if (rankXp < platinumMax) {
+      return (rankXp - goldMax) / (platinumMax - goldMax);
+    }
+    if (rankXp < diamondMax) {
+      return (rankXp - platinumMax) / (diamondMax - platinumMax);
+    }
+    if (rankXp < masterMax) {
+      return (rankXp - diamondMax) / (masterMax - diamondMax);
+    }
+    return 1.0;
+  }
+
   /// Recompute every muscle rank affected by a workout. Called from
   /// `GameHandlers.onWorkoutFinished`.
   ///

@@ -20,6 +20,15 @@ class PlanGenerator {
   /// Day indexes: Mon = 0 … Sun = 6, matching PRD §8 Screen 17 encoding.
   static int _todayIndex() => (DateTime.now().weekday - 1) % 7;
 
+  /// ISO-week ordinal for the current local date. Used as a rotation offset
+  /// so the same weekday in different weeks picks different compounds from
+  /// the candidate pool (stable within a day, varied across weeks).
+  static int _weekOrdinal() {
+    final now = DateTime.now();
+    final jan1 = DateTime(now.year, 1, 1);
+    return ((now.difference(jan1).inDays) / 7).floor();
+  }
+
   /// Split buckets by training days per week. Each bucket lists per-session
   /// focus tags; the caller maps today's position within the user's sorted
   /// training days to pick the right bucket.
@@ -173,18 +182,29 @@ class PlanGenerator {
     final picks = <PlannedExercise>[];
     final (sets, reps) = _setsReps(goals?.bodyType);
     final usedIds = <int>{};
+    final rotation = _weekOrdinal();
 
     for (final m in muscles) {
       if (avoid.contains(m)) continue;
 
-      final candidates = catalog
+      final allCandidates = catalog
           .where((e) =>
               e.primaryMuscle == m &&
               _equipmentOk(e, owned) &&
               e.id != null &&
               !usedIds.contains(e.id!))
           .toList();
-      if (candidates.isEmpty) continue;
+      if (allCandidates.isEmpty) continue;
+
+      // Week-based rotation so the same weekday picks different compounds
+      // across weeks (e.g. Push Monday alternates Bench → Incline → DB
+      // Press → …). Stable within a single day because `rotation` is
+      // week-keyed.
+      final offset = rotation % allCandidates.length;
+      final candidates = [
+        ...allCandidates.skip(offset),
+        ...allCandidates.take(offset),
+      ];
 
       final isPriority = priority.contains(m);
 
@@ -269,6 +289,10 @@ class PlanGenerator {
       exercises: clipped,
       estimatedMinutes: minutes,
       isScheduled: isScheduled,
+      daysPerWeek: sortedDays.length,
+      bodyType: goals?.bodyType,
+      priorityMuscles: priority,
+      ownedEquipment: experience?.equipment ?? const [],
     );
   }
 }
@@ -279,6 +303,10 @@ class SessionPlan {
     required this.exercises,
     required this.estimatedMinutes,
     this.isScheduled = true,
+    this.daysPerWeek = 0,
+    this.bodyType,
+    this.priorityMuscles = const [],
+    this.ownedEquipment = const [],
   });
 
   final String focus;
@@ -289,6 +317,13 @@ class SessionPlan {
   /// plan is an **optional** suggestion (user is off-schedule but we're
   /// still happy to show the next upcoming session).
   final bool isScheduled;
+
+  // Inputs that drove the plan — surfaced on the UI so the user can see
+  // which profile settings produced this prescription.
+  final int daysPerWeek;
+  final String? bodyType;
+  final List<String> priorityMuscles;
+  final List<String> ownedEquipment;
 }
 
 class PlannedExercise {

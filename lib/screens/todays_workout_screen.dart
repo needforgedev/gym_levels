@@ -151,6 +151,8 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
                       const SizedBox(height: AppSpace.s4),
                     ],
                     _SummaryChipRow(plan: plan),
+                    const SizedBox(height: AppSpace.s3),
+                    _ProfileChipRow(plan: plan),
                     const SizedBox(height: AppSpace.s4),
                     _MuscleSplitTags(plan: plan, goal: bundle.goal),
                     const SizedBox(height: AppSpace.s4),
@@ -293,6 +295,82 @@ class _SummaryChipRow extends StatelessWidget {
           color: AppPalette.xpGold,
         ),
       ],
+    );
+  }
+}
+
+/// Strip of chips that reflect the user's profile inputs feeding the plan.
+/// Visible so edits to onboarding (equipment / priority muscles / body type /
+/// days) are obviously the reason a prescription changed.
+class _ProfileChipRow extends StatelessWidget {
+  const _ProfileChipRow({required this.plan});
+  final SessionPlan plan;
+
+  String _bodyTypeLabel(String? bt) {
+    switch (bt) {
+      case 'lean':
+        return 'LEAN GOAL';
+      case 'muscular':
+        return 'HYPERTROPHY';
+      case 'strong':
+        return 'STRENGTH';
+      case 'balanced':
+        return 'BALANCED';
+      default:
+        return 'DEFAULT MIX';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final equipmentCount = plan.ownedEquipment
+        .where((e) => e != 'bodyweight')
+        .length;
+    final equipmentChip = equipmentCount == 0
+        ? 'BODYWEIGHT ONLY'
+        : '$equipmentCount GEAR';
+    final priorityChip = plan.priorityMuscles.isEmpty
+        ? null
+        : 'PRIORITY: ${plan.priorityMuscles.take(2).join(" · ").toUpperCase()}';
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _TinyChip(text: '${plan.daysPerWeek} DAYS/WK'),
+        _TinyChip(text: _bodyTypeLabel(plan.bodyType)),
+        _TinyChip(text: equipmentChip),
+        if (priorityChip != null)
+          _TinyChip(text: priorityChip, highlight: true),
+      ],
+    );
+  }
+}
+
+class _TinyChip extends StatelessWidget {
+  const _TinyChip({required this.text, this.highlight = false});
+  final String text;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        highlight ? AppPalette.yellow : AppPalette.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: highlight
+            ? AppPalette.yellow.withValues(alpha: 0.08)
+            : AppPalette.slate,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(
+          color: highlight ? AppPalette.yellow : AppPalette.strokeSubtle,
+        ),
+      ),
+      child: Text(
+        text,
+        style: AppType.label(color: color).copyWith(fontSize: 9),
+      ),
     );
   }
 }
