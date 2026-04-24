@@ -3,7 +3,7 @@
 **Companion to:** [PRD_GamifiedFitnessApp.md](PRD_GamifiedFitnessApp.md) (v1.2)
 **Design system:** [DesignSystem_LevelUpIRL.md](DesignSystem_LevelUpIRL.md) (v1.0)
 **Stack:** Flutter / Dart, **offline-first**, SQLite via **raw `sqflite`** (no ORM, no codegen) as source of truth.
-**Last updated:** 2026-04-20
+**Last updated:** 2026-04-24
 
 This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow the roadmap in PRD §16. Each phase has explicit **exit criteria** — do not start the next phase until the current phase's exit criteria are met.
 
@@ -20,8 +20,8 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 | Phase | Name | PRD roadmap | Window | Status |
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
-| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
-| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + §2.3 Today's Workout screen **done** ✓; remaining: 2.4 Muscle Rankings drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
+| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.5k post-onboarding editing + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
+| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + multi-exercise sessions + §2.3 Today's Workout (profile chips + completed-today + priority-weighted plan) + §2.4 Profile real per-muscle ranks **done** ✓; remaining: 2.4 drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[ ]` not started |
 | **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
 
@@ -267,6 +267,12 @@ Shared additions:
 ### 1.5j Router wiring
 - [x] Full flow in [lib/router.dart](lib/router.dart): `/` → 2 hype slides → 3 registration screens → `/calibrating/1` → 3 objectives screens → `/calibrating/2` → 4 experience screens → `/calibrating/3` → 4 attributes screens (target-weight conditionally skipped) → `/calibrating/4` → 2 operations screens → `/calibrating/5` → 1 settings screen → `/calibrating/6` → 2 outro screens → `/loader-pre-home` → `/home`.
 
+### 1.5k Post-onboarding editing (landed 2026-04-24)
+
+- [x] Onboarding screens that users need to edit mid-app (`/training-days`, `/session-minutes`, `/equipment`) now read `PlayerState.isOnboarded`. When true, Back and Save go to `/home` instead of advancing into the onboarding flow — the user isn't trapped re-running `/calibrating/*` screens just to change training days.
+- [x] Home's `_TodaysSessionCard` is tappable in every state and deep-links directly to the relevant fix screen (`NO SCHEDULE SET` → `/training-days`; `EQUIPMENT MISSING` → `/equipment`). Completes the "tap-to-fix" loop before the full Settings hub lands in §3.4.
+- [ ] Remaining onboarding screens (body-type, priority-muscles, body-fat, etc.) still lock users into the onboarding flow — lands with §3.4 Settings hub.
+
 ## 1.6 Local-only profile
 
 - [x] No email / Apple / Google sign-in in v1.0 (PRD §6.1) — the app bootstraps the singleton `player` row without any auth step.
@@ -275,7 +281,7 @@ Shared additions:
 - [x] `copyWith` added to `Goal`, `ExperienceRow`, `ScheduleRow`, `NotificationPrefs` so services can offer patch semantics without replaying whole rows.
 - [x] `patch(…)` helper added to `PlayerService`, `GoalsService`, `ExperienceService`, `ScheduleService` — fetch existing row, overlay non-null args, upsert.
 - [x] All 21 onboarding screens wired: each reads existing value on mount, each persists on CONTINUE before navigating.
-- [~] Post-onboarding screens partially wired to real data. As of §1.9: Home's **Total Workouts** card reads from `WorkoutService.totalFinished()` live; display name flows through PlayerState. Profile / Streak / Quests + Home's `level` / `streak` / `xpCurrent` / `xpMax` / muscle-rank row / active quests still read demo scalars — those come from Phase 2 gameplay engines (XP, Streak, Rank, Quest).
+- [x] Post-onboarding screens fully wired to real data as of 2026-04-24. Home's level / XP bar / streak / Total Workouts all read persisted state through `PlayerState.refresh()` (XpEngine.resolve + StreakService + WorkoutService). Profile shows real lifetime XP, real workout count, real longest streak, and real per-muscle ranks from `MuscleRankService` with tier progress via `RankEngine.progressInTier`. Today's Workout surfaces the profile inputs that drove the plan (`_ProfileChipRow`). Quests still render from the daily-quest engine (§2.1c).
 
 ## 1.7 Backup / restore (v1.0 multi-device story)
 - [ ] Settings action: Export → copies the SQLite file to a share sheet (Files / Drive / email)
@@ -318,7 +324,7 @@ Shared additions:
 - [x] Kill + relaunch preserves onboarding + workout data in SQLite — verified manually via §1.5i route-level resume + §1.9 workout persistence; formal `kill -9` instrumentation test still in §1.8
 - [—] `gym_levels.db` is unreadable with a vanilla SQLite viewer — **deferred per §1.2**; not a v1.0 blocker
 - [x] Exercise catalog seed loads on first launch (80 rows verified) — landed with §1.3, covered by [test/db/seed_test.dart](test/db/seed_test.dart)
-- [~] All Phase 0 screens read their data from SQLite via services — **onboarding (all 21) + Home's Total Workouts card** done; Profile / Streak / Quests / Home gameplay scalars still read demo values pending Phase 2 engines
+- [x] All Phase 0 screens read their data from SQLite via services — onboarding (all 21), Home (Total Workouts, level, XP bar, streak, Today's Protocol, active quests), Profile (stats + muscle ranks), Today's Workout (plan generator + profile chips) all live as of 2026-04-24. Streak screen calendar still renders placeholder days; that's a drill-down polish, not a data-layer gap.
 - [~] CI runs `flutter analyze` + `flutter test` — all pass locally on every change; GitHub Actions workflow not yet set up
 - [ ] Migration round-trip tests pass for every schema version shipped so far — lands with first v2 schema bump per §1.4
 
@@ -379,9 +385,13 @@ Minimum-viable implementation of PRD Appendix B. Returns **today's** suggested s
 - [x] Limitation filter: `lower_back / knee / shoulder / wrist_elbow / hip / neck` → avoided muscles
 - [x] Sets × reps from `goals.bodyType` — lean 3×12 / muscular 3×10 / strong 5×5 / balanced 3×8; accessories get +2 reps
 - [x] Per-session caps via `schedule.sessionMinutes` (~6 min/exercise) clamped to [4, 8]
+- [x] Priority-muscle weighting (landed 2026-04-24) — `goals.priorityMuscles` reorders the muscle loop so priority muscles lead, priority compounds get +1 set and always get an accessory, and a bonus priority exercise is appended when today's focus doesn't overlap the priority list. `PlannedExercise.isPriority` is surfaced on Today's Workout as a yellow ★ tag.
+- [x] Week-based rotation (landed 2026-04-24) — candidate lists rotate by ISO-week ordinal so the same weekday + profile produces different compounds across weeks (stable within a day). Addresses the "every visit shows the same exercise" problem for users with small candidate pools (e.g. bodyweight-only).
+- [x] Plan exposes profile inputs (`daysPerWeek`, `bodyType`, `priorityMuscles`, `ownedEquipment`) on `SessionPlan` so Today's Workout can render a `_ProfileChipRow` — users can now see which profile settings drove this prescription without opening the "Why this workout?" drawer.
+- [x] Honors generator contract: `todaysSession()` returns `null` only when no schedule exists. When the schedule exists but no catalog exercises survive the equipment filter, returns a `SessionPlan` with `exercises.isEmpty` so Home can distinguish "no schedule" from "no gear match" and deep-link to `/equipment` (previously the UI rendered "NO SCHEDULE SET" in both cases).
 - [ ] Session-to-session periodization / 4-week rolling plan — deferred to §3.6 "Custom plan regeneration" (Pro feature)
 - [ ] Auto-regenerate on goal/equipment/schedule edits — the generator is idempotent; invalidation is a UI concern for Phase 3 settings
-- [ ] Unit tests — structural (split mapping + equipment filter) deferred; the data services the generator relies on are already covered by [test/db/db_smoke_test.dart](test/db/db_smoke_test.dart)
+- [ ] Unit tests — structural (split mapping + equipment filter + priority reorder + week rotation) deferred; the data services the generator relies on are already covered by [test/db/db_smoke_test.dart](test/db/db_smoke_test.dart)
 
 ## 2.2 Workout logger — wire to real persistence
 
@@ -396,7 +406,7 @@ Persistence-only slice **already landed** in §1.9 so the app demos as a real tr
 - [ ] Session summary **modal** on finish: duration, volume, XP earned, sets completed, new PRs, rank changes — today the logger navigates to [WorkoutDetailScreen](lib/screens/workout_detail_screen.dart) instead of a modal; modal polish pass deferred
 - [ ] PR `[System]` in-app banner (PRD §14) — analytics seam exists; banner UI lands with §2.5 notifications
 - [x] `+ Add Set` wired up — **landed with §1.9**
-- [ ] `+ Add Exercise` (multiple exercises per session) + Swap sheet — §1.9 ships single-exercise sessions only
+- [x] Multi-exercise session (landed 2026-04-24) — Today's Workout's START queues the remaining prescribed exercises via `?queue=<id>,<id>` query param. [WorkoutScreen](lib/screens/workout_screen.dart) advances through the queue under a single `workouts` row: header shows "EXERCISE 2 OF 3", a teal `NEXT EXERCISE →` button appears once the user logs at least one set on the current exercise, `_finishAndGo` aggregates volume + set-count from the DB across every exercise in the session so Finish finalizes the whole prescription, not just the last exercise. The existing Swap sheet (UI-only, §2.3) feeds into the queue.
 - [ ] Rest timer persists across backgrounding (don't lose the countdown if user leaves app mid-rest)
 - [ ] Haptics: light on set complete, success on level-up
 
@@ -411,17 +421,21 @@ Per PRD §9A.2. Surfaces [PlanGenerator.todaysSession()](lib/game/plan_generator
 - [x] Swap bottom sheet — surfaces up to 3 alternates filtered by same `primary_muscle`; tap replaces the slot (in-memory for v1)
 - [x] Start Workout CTA (sticky bottom, teal primary) — launches the live logger against the first prescribed exercise
 - [x] Rest-day state — when PlanGenerator returns null (today not in `schedule.days`), show "RECOVERY IS A BUFF" card + "LOG FREE WORKOUT" secondary link to the exercise picker
-- [x] Home wiring — replaced generic "Start Workout" card with `_TodaysSessionCard` (reads real `SessionPlan` via FutureBuilder); rest day flips to teal with a bedtime icon; small "OR PICK ANY EXERCISE →" ghost link preserves the direct-pick fallback
+- [x] Home wiring — `_TodaysSessionCard` reads real `SessionPlan` + `WorkoutService.finishedToday()` in parallel and renders **five distinct states**: (1) no schedule (teal → `/training-days`), (2) equipment missing (teal, tune icon → `/equipment`), (3) optional rest day (teal, moon), (4) scheduled (purple, play), (5) **completed today** (green, check → `/workouts/<id>`, landed 2026-04-24) showing XP + volume logged.
+- [x] Profile chip strip (landed 2026-04-24) — `_ProfileChipRow` under the summary row shows `{N} DAYS/WK · {body type} · BODYWEIGHT / {N} GEAR · PRIORITY: {muscles}` so users can see which profile inputs drove the prescription without opening the "Why" drawer. Priority chip is highlighted yellow.
+- [x] Completed-today banner + CTA swap (landed 2026-04-24) — when `WorkoutService.finishedToday()` returns a row, a green `SESSION COMPLETED TODAY` banner is shown with XP / volume / duration, and the bottom CTA flips from `START WORKOUT` to `VIEW SESSION` → `/workouts/<id>`. Resets automatically on the next local day.
+- [x] Priority-muscle badge on exercise cards (landed 2026-04-24) — ★ `PRIORITY MUSCLE` tag under the exercise name for `PlannedExercise.isPriority == true`. Preserved through the Swap sheet.
+- [x] Multi-exercise workout session (landed 2026-04-24) — START passes the remaining prescribed exercise IDs as a `?queue=` query param; the logger walks through all of them under one `workouts` row. See §2.2 multi-exercise note for the logger side.
 - [ ] Equipment / limitation filter on the Swap sheet — v1 filters by muscle only; equipment + limitation pass-through reuses the PlanGenerator filter; wire in next polish pass
 - [ ] Edit mode (drag handle + delete icon + "Add exercise") writing to `workout_overrides` — deferred; the "Swap" button already covers the most common edit
-- [ ] Multi-exercise workout session — Start Workout launches with the first planned exercise only; walking through all planned slots in one continuous session needs the logger's `+ Add Exercise` work in §2.2
 
 ## 2.4 Muscle Rankings drill-down (new)
 Per PRD §9A.4.
-- [ ] Route `/profile/ranks` (list) + `/profile/ranks/:muscle` (drill-down)
+- [x] **Profile screen list is live** (landed 2026-04-24) — [lib/screens/profile_screen.dart](lib/screens/profile_screen.dart) loads `WorkoutService.totalFinished`, `StreakService.get`, and `MuscleRankService.getAll` in parallel. Player header shows real level / XP / display name. Stat tiles show real TOTAL XP (comma-formatted via `PlayerState.totalXp`), WORKOUTS, and BEST STREAK. Muscle list renders every tracked muscle with real tier + sub-rank via `RankEngine.assign` and a progress bar fed by new `RankEngine.progressInTier` helper. Untrained muscles default to Bronze I / 0%.
+- [ ] Dedicated drill-down routes `/profile/ranks` (list) + `/profile/ranks/:muscle` (detail) — the Profile list covers the list view; a dedicated page would add muscle-family filters + sorting.
 - [ ] Anime body with Lottie pulse rate proportional to rank
 - [ ] Overall rank badge + tier explainer sheet
-- [ ] Drill-down: rank progress bar, XP to next tier, PR history, recent volume chart
+- [ ] Drill-down detail: rank progress bar, XP to next tier, PR history, recent volume chart
 
 ## 2.5 Local notifications — `notifications_service.dart`
 PRD §14 — 100% local, zero APNs/FCM.
@@ -671,10 +685,10 @@ Phase 1.9 (demo tracker: picker + logger + history + detail) ✓ done
 Phase 1 parked:  1.7 (backup/restore), 1.8 (airplane-mode integration tests)
     ↓
 Phase 2.1 (XpEngine / RankEngine / QuestEngine / StreakEngine / PlanGenerator + GameHandlers) ✓ done
-Phase 2.2 (logger gamification wiring: real XP per set, PR detect, rank recompute, level-up + milestone nav) ✓ done core
+Phase 2.2 (logger gamification wiring: real XP per set, PR detect, rank recompute, multi-exercise sessions, level-up + milestone nav) ✓ done core
     ↓
-Phase 2.3 Today's Workout screen  ✓ done — surfaces PlanGenerator output
-Phase 2.4 Muscle Rankings drill-down
+Phase 2.3 Today's Workout screen  ✓ done — profile chips, completed-today state, priority badges, multi-exercise START queue
+Phase 2.4 Muscle Rankings — Profile list ✓ real; dedicated drill-down pages still open
 Phase 2.5 notifications          ─┤ flutter_local_notifications
 Phase 2.6 paywall + IAP          ─┘ in_app_purchase + cached entitlement
 Phase 2.7 analytics flush to PostHog
@@ -683,7 +697,7 @@ Phase 2.8 crash reporting (sentry_flutter)
 Phase 3 polish + launch
 ```
 
-**Current critical path:** **Phase 2.4 Muscle Rankings drill-down** (already valuable — the rank engine is producing real per-muscle data on every workout save) or **Phase 2.5 local notifications** (workout reminders + streak warnings drive retention). Notifications and paywall are independent of the remaining gameplay engines and can proceed in parallel.
+**Current critical path:** **Phase 2.5 local notifications** (workout reminders + streak warnings — these drive retention and have no upstream deps) or **Phase 2.6 paywall IAP** (real monetization plumbing). Both can proceed in parallel. §2.4 drill-down pages, §1.7 backup/restore, and §1.8 integration tests are lower priority because the core loop is fully playable: onboarding → plan → log → XP/rank/streak/quest updates → profile reflects real data → completed-today state gates same-day re-runs.
 
 ---
 

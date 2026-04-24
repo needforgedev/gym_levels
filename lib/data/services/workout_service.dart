@@ -31,6 +31,20 @@ class WorkoutService {
     );
   }
 
+  /// Add XP on top of what was set by `finish`. Used by `GameHandlers` to
+  /// fold in quest-reward XP once the quest engine has resolved which
+  /// quests were just completed.
+  static Future<void> addXp(int id, int extraXp) async {
+    if (extraXp <= 0) return;
+    final db = await AppDb.instance;
+    await db.rawUpdate(
+      'UPDATE ${T.workouts} '
+      'SET ${CWorkout.xpEarned} = COALESCE(${CWorkout.xpEarned}, 0) + ? '
+      'WHERE ${CWorkout.id} = ?',
+      [extraXp, id],
+    );
+  }
+
   static Future<Workout?> byId(int id) async {
     final db = await AppDb.instance;
     final rows = await db.query(T.workouts,

@@ -235,11 +235,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     await state.refresh();
 
     if (!mounted) return;
-    // Prefer the strongest celebration this session earned.
+    // Prefer the strongest celebration this session earned. When routing
+    // straight to the workout detail, forward the summary via `extra` so
+    // the detail screen can render a one-time quest/PR celebration banner.
     if (summary.leveledUp) {
       context.go('/level-up');
     } else if (summary.streakMilestoneReached) {
       context.go('/streak-milestone');
+    } else if (fallbackRoute.startsWith('/workouts/')) {
+      context.go(fallbackRoute, extra: summary);
     } else {
       context.go(fallbackRoute);
     }

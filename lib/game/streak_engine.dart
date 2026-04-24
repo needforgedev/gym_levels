@@ -19,6 +19,10 @@ class StreakEngine {
 
   static const List<int> _milestones = [7, 14, 30, 60, 90, 180, 365];
 
+  /// Public read of the milestone ladder — lets the Streak screen compute
+  /// the next milestone without duplicating the constant.
+  static List<int> get milestones => _milestones;
+
   /// Called by [GameHandlers.onWorkoutFinished] after a session is committed.
   /// Returns the post-update snapshot + whether the streak changed.
   static Future<StreakUpdate> onWorkoutFinished() async {

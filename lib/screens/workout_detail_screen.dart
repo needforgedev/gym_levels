@@ -6,6 +6,7 @@ import '../data/models/workout_set.dart';
 import '../data/services/exercise_service.dart';
 import '../data/services/sets_service.dart';
 import '../data/services/workout_service.dart';
+import '../game/game_handlers.dart';
 import '../theme/tokens.dart';
 import '../widgets/buttons.dart';
 import '../widgets/neon_card.dart';
@@ -25,10 +26,21 @@ class _DetailBundle {
 
 /// Read-only detail of a finished workout. Shows per-set rows + aggregate
 /// stats. "Delete" cascades via FK.
+///
+/// When navigated-to straight from a finished session, the `justFinished`
+/// summary drives a one-time celebration banner at the top of the screen
+/// (quests completed, quest-XP folded in, PRs hit). Navigating back and
+/// re-entering without the `extra` clears the banner — it's a "just now"
+/// moment, not persistent state.
 class WorkoutDetailScreen extends StatefulWidget {
-  const WorkoutDetailScreen({super.key, required this.workoutId});
+  const WorkoutDetailScreen({
+    super.key,
+    required this.workoutId,
+    this.justFinished,
+  });
 
   final int workoutId;
+  final SessionSummary? justFinished;
 
   @override
   State<WorkoutDetailScreen> createState() => _WorkoutDetailScreenState();
@@ -105,6 +117,8 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
 
           final w = bundle.workout;
           final sets = bundle.sets;
+          final prCount = sets.where((s) => s.isPr).length;
+          final summary = widget.justFinished;
 
           return Column(
             children: [
@@ -113,6 +127,13 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(AppSpace.s5),
                   children: [
+                    if (summary != null) ...[
+                      _CelebrationBanner(
+                        summary: summary,
+                        prCount: prCount,
+                      ),
+                      const SizedBox(height: AppSpace.s4),
+                    ],
                     _SummaryCard(workout: w, setCount: sets.length),
                     const SizedBox(height: AppSpace.s5),
                     Text(
@@ -341,6 +362,88 @@ class _DeleteButton extends StatelessWidget {
       background: AppPalette.danger,
       foreground: AppPalette.white,
       glow: GlowColor.flame,
+    );
+  }
+}
+
+/// One-time banner rendered at the top of the detail screen right after a
+/// session finishes. Summarizes quest completions, quest-XP folded in, and
+/// PR count. Hidden on subsequent visits to the same workout.
+class _CelebrationBanner extends StatelessWidget {
+  const _CelebrationBanner({
+    required this.summary,
+    required this.prCount,
+  });
+
+  final SessionSummary summary;
+  final int prCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final questCount = summary.completedQuests.length;
+    final questXp = summary.questXpAwarded;
+    final streakGained = summary.streakAfter > summary.streakBefore;
+
+    final parts = <({IconData icon, Color color, String text})>[];
+    if (questCount > 0) {
+      parts.add((
+        icon: Icons.check_circle,
+        color: AppPalette.green,
+        text: questCount == 1
+            ? '1 QUEST · +$questXp XP'
+            : '$questCount QUESTS · +$questXp XP',
+      ));
+    }
+    if (prCount > 0) {
+      parts.add((
+        icon: Icons.emoji_events,
+        color: AppPalette.xpGold,
+        text: prCount == 1 ? '1 NEW PR · +25 XP' : '$prCount NEW PRS',
+      ));
+    }
+    if (streakGained) {
+      parts.add((
+        icon: Icons.local_fire_department,
+        color: AppPalette.flame,
+        text: 'STREAK · ${summary.streakAfter} DAYS',
+      ));
+    }
+
+    // Nothing worth celebrating — skip the banner entirely so we don't show
+    // a green card for a ho-hum session.
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    return NeonCard(
+      glow: GlowColor.green,
+      padding: const EdgeInsets.all(AppSpace.s4),
+      pulse: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'SESSION COMPLETE',
+            style: AppType.label(color: AppPalette.green),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            parts.length == 1
+                ? 'One highlight from this session:'
+                : 'Highlights from this session:',
+            style: AppType.bodySM(color: AppPalette.textSecondary),
+          ),
+          const SizedBox(height: AppSpace.s3),
+          for (final p in parts) ...[
+            Row(
+              children: [
+                Icon(p.icon, color: p.color, size: 16),
+                const SizedBox(width: 8),
+                Text(p.text, style: AppType.label(color: p.color)),
+              ],
+            ),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
     );
   }
 }

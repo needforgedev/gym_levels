@@ -45,10 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCompleteOnboarding());
   }
 
-  /// Rotates the daily batch if none issued today, then returns what's active.
+  /// Rotates the daily batch if none issued today, then returns today's
+  /// full batch (completed ones included). Completed quests stay visible
+  /// with a DONE state until tomorrow's rotation — matches the Quests tab.
   Future<List<model.Quest>> _loadDailyQuests() async {
     await QuestEngine.rotateDailyIfNeeded();
-    return QuestService.active('daily');
+    return QuestService.issuedSince('daily', QuestEngine.todayEpoch());
   }
 
   /// Summary label for the muscle-ranks card — averages `rank_xp` across the
@@ -198,14 +200,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: AppType.system(color: AppPalette.textMuted),
                 );
               }
+              // Show up to 2, but prefer in-progress quests over completed
+              // ones so the user sees what's actionable without losing the
+              // DONE state of a just-finished quest until tomorrow.
+              final sorted = [
+                ...quests.where((q) => !q.isCompleted),
+                ...quests.where((q) => q.isCompleted),
+              ];
               return Column(
                 children: [
-                  for (final q in quests.take(2)) ...[
+                  for (final q in sorted.take(2)) ...[
                     QuestRow(
                       title: q.title,
                       type: QuestType.daily,
-                      progress: q.progressRatio,
+                      progress: q.isCompleted ? 1.0 : q.progressRatio,
                       xp: q.xpReward,
+                      completed: q.isCompleted,
                     ),
                     const SizedBox(height: AppSpace.s3),
                   ],

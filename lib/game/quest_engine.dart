@@ -45,8 +45,10 @@ class QuestEngine {
   ];
 
   /// Epoch seconds for today's local midnight. Used to decide whether the
-  /// current daily batch was issued "today".
-  static int _todayEpoch() {
+  /// current daily batch was issued "today" — both by the rotation logic
+  /// here and by the UI layer (Home + Quests screen) so completed dailies
+  /// keep rendering with a DONE state until the next local day rolls over.
+  static int todayEpoch() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day)
             .millisecondsSinceEpoch ~/
@@ -55,24 +57,35 @@ class QuestEngine {
 
   /// If no daily quest has been issued since today's midnight, insert three
   /// fresh quests from the pool. Safe to call every Home mount.
+  ///
+  /// Critically, we check the *full* quest history for today — not just
+  /// the active (non-completed) quests. If a user has already finished all
+  /// three of today's dailies, `QuestService.active` would return empty
+  /// and this method would wrongly insert a fresh batch, resetting the
+  /// completed state the user just earned.
   static Future<void> rotateDailyIfNeeded() async {
-    final today = _todayEpoch();
-    final existing = await QuestService.active('daily');
-    final issuedToday =
-        existing.where((q) => q.issuedAt >= today).toList();
+    final today = todayEpoch();
+    final issuedToday = await QuestService.issuedSince('daily', today);
     if (issuedToday.isNotEmpty) return;
 
-    // Stamp any lingering pre-today daily quests as expired by marking them
-    // complete — keeps `active` queries clean without needing a separate
-    // expires_at sweep (the PRD §14 will handle weekly/boss that way later).
-    for (final q in existing) {
+    // Nothing from today yet — retire any still-active dailies from
+    // previous days by stamping them complete, then issue a fresh batch.
+    // Keeps the active() query clean without needing a separate
+    // expires_at sweep (PRD §14 will handle weekly/boss that way later).
+    final stillActive = await QuestService.active('daily');
+    for (final q in stillActive) {
       if (q.id != null) await QuestService.complete(q.id!);
     }
 
-    // Deterministic rotation — pick the first 3 templates from the pool.
-    // Switching to a seeded shuffle once we have enough templates is a
-    // one-line change.
-    final picks = dailyPool.take(3).toList();
+    // Day-seeded rotation across the daily pool — stable within a calendar
+    // day, varied across days. Rotates by `dayOrdinal % pool.length` so
+    // every template surfaces equally often without RNG state to persist.
+    final dayOrdinal = today ~/ Duration.secondsPerDay;
+    final rotated = <DailyQuestTemplate>[
+      ...dailyPool.skip(dayOrdinal % dailyPool.length),
+      ...dailyPool.take(dayOrdinal % dailyPool.length),
+    ];
+    final picks = rotated.take(3).toList();
     for (final tpl in picks) {
       await QuestService.insert(Quest(
         type: 'daily',

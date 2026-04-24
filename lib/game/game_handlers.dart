@@ -47,6 +47,18 @@ class GameHandlers {
       maxBaseXpInWorkout: maxBaseXp,
     );
 
+    // Fold quest XP into the current workout row so `WorkoutService.totalXp`
+    // (and therefore PlayerState level + XP bar) picks it up. Crucially,
+    // this happens BEFORE the `after` snapshot so a quest-triggered
+    // level-up fires the celebration via `summary.leveledUp`.
+    final questXp = completedQuests.fold<int>(
+      0,
+      (sum, q) => sum + q.xpReward,
+    );
+    if (questXp > 0) {
+      await WorkoutService.addXp(workoutId, questXp);
+    }
+
     final after = await _snapshot();
 
     // Telemetry matches PRD §15 event schema.
@@ -73,6 +85,7 @@ class GameHandlers {
       streakAfter: streak.current,
       streakMilestoneReached: streak.milestoneReached,
       completedQuests: completedQuests,
+      questXpAwarded: questXp,
     );
   }
 
@@ -111,6 +124,7 @@ class SessionSummary {
     required this.streakAfter,
     required this.streakMilestoneReached,
     required this.completedQuests,
+    this.questXpAwarded = 0,
   });
 
   final Workout? workout;
@@ -121,6 +135,10 @@ class SessionSummary {
   final int streakAfter;
   final bool streakMilestoneReached;
   final List<Quest> completedQuests;
+
+  /// Total XP folded into the workout row from quests completed during this
+  /// session. Surfaced on the post-session UI as a separate toast.
+  final int questXpAwarded;
 
   bool get leveledUp => levelAfter > levelBefore;
 

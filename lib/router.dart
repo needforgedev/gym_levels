@@ -36,6 +36,7 @@ import 'screens/welcome_screen.dart';
 import 'screens/workout_detail_screen.dart';
 import 'screens/workout_history_screen.dart';
 import 'screens/workout_screen.dart';
+import 'game/game_handlers.dart';
 
 /// Full PRD §8 onboarding flow:
 ///
@@ -212,6 +213,9 @@ final appRouter = GoRouter(
       path: '/workouts/:id',
       builder: (ctx, state) => WorkoutDetailScreen(
         workoutId: int.parse(state.pathParameters['id']!),
+        justFinished: state.extra is SessionSummary
+            ? state.extra as SessionSummary
+            : null,
       ),
     ),
     GoRoute(path: '/quests', builder: (_, _) => const QuestsScreen()),

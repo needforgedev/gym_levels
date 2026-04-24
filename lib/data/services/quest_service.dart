@@ -13,7 +13,8 @@ class QuestService {
     return db.insert(T.quests, quest.toRow());
   }
 
-  /// Active quests of a given type (`daily` / `weekly` / `boss`).
+  /// Active (not-yet-completed) quests of a given type
+  /// (`daily` / `weekly` / `boss`).
   static Future<List<Quest>> active(String type) async {
     final db = await AppDb.instance;
     final rows = await db.query(
@@ -21,6 +22,23 @@ class QuestService {
       where: '${CQuest.userId} = ? AND ${CQuest.type} = ? '
           'AND ${CQuest.completedAt} IS NULL',
       whereArgs: [1, type],
+      orderBy: '${CQuest.issuedAt} ASC',
+    );
+    return rows.map(Quest.fromRow).toList();
+  }
+
+  /// Every quest of a given type issued at or after [sinceEpoch],
+  /// regardless of completion. Drives today's quest UI: users should keep
+  /// seeing a completed quest stamped "DONE" for the rest of the day
+  /// instead of having it disappear (which the rotation logic would then
+  /// misread as "time to issue a fresh batch").
+  static Future<List<Quest>> issuedSince(String type, int sinceEpoch) async {
+    final db = await AppDb.instance;
+    final rows = await db.query(
+      T.quests,
+      where: '${CQuest.userId} = ? AND ${CQuest.type} = ? '
+          'AND ${CQuest.issuedAt} >= ?',
+      whereArgs: [1, type, sinceEpoch],
       orderBy: '${CQuest.issuedAt} ASC',
     );
     return rows.map(Quest.fromRow).toList();
