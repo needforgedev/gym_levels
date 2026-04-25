@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/services/experience_service.dart';
-import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
@@ -36,46 +34,32 @@ class _TenureScreenState extends State<TenureScreen> {
   }
 
   static const _options = [
-    ('beginner', 'COMPLETE BEGINNER', 'Never trained formally'),
-    ('starting', 'JUST STARTING OUT', '0–6 months'),
-    ('some', 'SOME EXPERIENCE', '6–24 months'),
-    ('experienced', 'EXPERIENCED', '1–3+ years'),
+    ('beginner', 'Complete Beginner', 'First time training'),
+    ('starting', 'Just Starting Out', 'Under 6 months'),
+    ('some', 'Some Experience', '6 months – 1 year'),
+    ('experienced', 'Experienced', '1–3 years consistent'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
-      percent: 32,
-      kicker: 'COMBAT EXPERIENCE',
-      subtitle: '…estimating prior training payload.',
+      percent: 42,
+      subtitle: 'Estimating prior training payload…',
+      title: 'Years under the bar:',
       onBack: () => context.go('/calibrating/2'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.yellow,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Years under\nthe bar',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final o in _options)
+            OnboardingRadioTile(
+              label: o.$2,
+              subtitle: o.$3,
+              selected: _value == o.$1,
+              onTap: () => setState(() => _value = o.$1),
             ),
-            const SizedBox(height: AppSpace.s6),
-            ..._options.map(
-              (o) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.s3),
-                child: OnboardingRadioTile(
-                  label: o.$2,
-                  subtitle: o.$3,
-                  selected: _value == o.$1,
-                  themeColor: AppPalette.yellow,
-                  onTap: () => setState(() => _value = o.$1),
-                ),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -4,9 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../data/services/player_service.dart';
 import '../state/player_state.dart';
-import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -42,33 +40,18 @@ class _AgeScreenState extends State<AgeScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.registration,
-      percent: 6,
-      kicker: 'PLAYER REGISTRATION',
-      subtitle: '…scanning biological age.',
+      percent: 12,
+      subtitle: 'Recording temporal coordinates…',
+      title: 'Current age detected:',
       onBack: () => context.go('/register'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.teal,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Current age\ndetected',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            BigSlider(
-              value: _age,
-              min: 16,
-              max: 80,
-              divisions: 64,
-              unit: 'yrs',
-              themeColor: AppPalette.teal,
-              onChanged: (v) => setState(() => _age = v),
-            ),
-          ],
-        ),
+      child: BigSlider(
+        value: _age,
+        min: 16,
+        max: 80,
+        divisions: 64,
+        unit: 'years',
+        onChanged: (v) => setState(() => _age = v),
       ),
     );
   }

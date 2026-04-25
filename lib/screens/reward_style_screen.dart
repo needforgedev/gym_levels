@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/services/goals_service.dart';
-import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
@@ -37,47 +35,33 @@ class _RewardStyleScreenState extends State<RewardStyleScreen> {
   }
 
   static const _options = [
-    ('achievements', 'ACHIEVEMENTS & BADGES', 'Show me the trophies'),
-    ('leveling', 'LEVELING UP & RANKS', 'Climb the ladder'),
-    ('streaks', 'DAILY STREAKS', 'Never break the chain'),
-    ('challenges', 'COMPLETING CHALLENGES', 'Give me bosses to fight'),
+    ('achievements', 'Achievements & Badges', Icons.emoji_events),
+    ('leveling', 'Leveling Up & Ranks', Icons.star),
+    ('streaks', 'Daily Streaks', Icons.local_fire_department),
+    ('challenges', 'Completing Challenges', Icons.gps_fixed),
   ];
 
   @override
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.objectives,
-      percent: 25,
-      kicker: 'MISSION OBJECTIVES',
-      subtitle: '…calibrating reward protocol.',
+      percent: 36,
+      subtitle: 'Calibrating reward protocol…',
+      title: 'What excites you most?',
       nextEnabled: _value != null,
       onBack: () => context.go('/priority-muscles'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.purple,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'What rewards\nexcite you most?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final o in _options)
+            OnboardingRadioTile(
+              label: o.$2,
+              icon: Icon(o.$3),
+              selected: _value == o.$1,
+              onTap: () => setState(() => _value = o.$1),
             ),
-            const SizedBox(height: AppSpace.s6),
-            ..._options.map(
-              (o) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.s3),
-                child: OnboardingRadioTile(
-                  label: o.$2,
-                  subtitle: o.$3,
-                  selected: _value == o.$1,
-                  themeColor: AppPalette.purple,
-                  onTap: () => setState(() => _value = o.$1),
-                ),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

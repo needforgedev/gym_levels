@@ -4,9 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../data/services/experience_service.dart';
 import '../state/player_state.dart';
-import '../theme/tokens.dart';
-import '../widgets/chips.dart';
-import '../widgets/neon_card.dart';
+import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -40,56 +38,49 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   static const _options = [
-    ChipOption(value: 'barbell', label: 'BARBELL & PLATES'),
-    ChipOption(value: 'dumbbell', label: 'DUMBBELLS'),
-    ChipOption(value: 'kettlebell', label: 'KETTLEBELLS'),
-    ChipOption(value: 'resistance_band', label: 'RESISTANCE BANDS'),
-    ChipOption(value: 'pullup_bar', label: 'PULL-UP BAR'),
-    ChipOption(value: 'cable_machine', label: 'CABLE MACHINE'),
-    ChipOption(value: 'bench', label: 'BENCH'),
-    ChipOption(value: 'squat_rack', label: 'SQUAT RACK'),
-    ChipOption(value: 'bodyweight', label: 'BODYWEIGHT ONLY'),
+    ('barbell', 'Barbell & Plates'),
+    ('dumbbell', 'Dumbbells'),
+    ('kettlebell', 'Kettlebells'),
+    ('resistance_band', 'Resistance Bands'),
+    ('pullup_bar', 'Pull-up Bar'),
+    ('cable_machine', 'Cable Machine'),
+    ('bench', 'Bench'),
+    ('squat_rack', 'Squat Rack'),
+    ('bodyweight', 'Bodyweight Only'),
   ];
+
+  void _toggle(String key) {
+    final list = List<String>.from(_selected);
+    if (list.contains(key)) {
+      list.remove(key);
+    } else {
+      list.add(key);
+    }
+    setState(() => _selected = list);
+  }
 
   @override
   Widget build(BuildContext context) {
     final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.experience,
-      percent: 38,
-      kicker: 'COMBAT EXPERIENCE',
-      subtitle: '…scanning available armoury.',
+      percent: 48,
+      subtitle: 'Scanning available armoury…',
+      title: 'What equipment do you have?',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go(onboarded ? '/home' : '/tenure'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.yellow,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'What equipment\ndo you have?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 10,
+        children: [
+          for (final o in _options)
+            OnboardingChip(
+              label: o.$2,
+              selected: _selected.contains(o.$1),
+              onTap: () => _toggle(o.$1),
             ),
-            const SizedBox(height: AppSpace.s1),
-            Text(
-              'WE WILL ONLY PRESCRIBE LIFTS YOU CAN ACTUALLY DO.',
-              style: AppType.bodySM(color: AppPalette.textMuted),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            AppChipGroup<String>(
-              options: _options,
-              value: _selected,
-              mode: ChipMode.multi,
-              themeColor: AppPalette.yellow,
-              themeGlow: GlowColor.yellow,
-              onChanged: (v) => setState(
-                () => _selected = List<String>.from(v as List),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

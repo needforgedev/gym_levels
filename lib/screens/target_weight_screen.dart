@@ -6,7 +6,6 @@ import '../data/services/goals_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -70,49 +69,39 @@ class _TargetWeightScreenState extends State<TargetWeightScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.attributes,
-      percent: 55,
-      kicker: 'PHYSICAL ATTRIBUTES',
-      subtitle: '…locking target mass.',
+      percent: 78,
+      subtitle: 'Locking target mass…',
+      title: 'Target body weight:',
       nextEnabled: _valid,
       onBack: () => context.go('/weight-direction'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.teal,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Target body\nweight',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'CURRENT: ${_currentKg.round()} KG',
+            style: AppType.label(color: AppPalette.textMuted),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          if (_loaded && _target != null)
+            BigSlider(
+              value: _target!,
+              min: 30,
+              max: 250,
+              divisions: 220,
+              unit: 'kg',
+              onChanged: (v) => setState(() => _target = v),
+            )
+          else
+            const SizedBox(height: 200),
+          const SizedBox(height: AppSpace.s3),
+          Text(
+            _hint,
+            style: AppType.system(
+              color: _valid ? AppPalette.textMuted : AppPalette.danger,
             ),
-            const SizedBox(height: AppSpace.s1),
-            Text(
-              'CURRENT: ${_currentKg.round()} KG',
-              style: AppType.label(color: AppPalette.textMuted),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            if (_loaded && _target != null)
-              BigSlider(
-                value: _target!,
-                min: 30,
-                max: 250,
-                divisions: 220,
-                unit: 'kg',
-                themeColor: AppPalette.teal,
-                onChanged: (v) => setState(() => _target = v),
-              )
-            else
-              const SizedBox(height: 100),
-            const SizedBox(height: AppSpace.s3),
-            Text(
-              _hint,
-              style: AppType.system(
-                color: _valid ? AppPalette.textMuted : AppPalette.danger,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

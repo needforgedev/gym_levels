@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/services/experience_service.dart';
-import '../theme/tokens.dart';
-import '../widgets/chips.dart';
-import '../widgets/neon_card.dart';
+import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -36,51 +34,44 @@ class _TrainingStylesScreenState extends State<TrainingStylesScreen> {
   }
 
   static const _options = [
-    ChipOption(value: 'weightlifting', label: 'WEIGHTLIFTING'),
-    ChipOption(value: 'powerlifting', label: 'POWERLIFTING'),
-    ChipOption(value: 'crossfit', label: 'CROSSFIT'),
-    ChipOption(value: 'calisthenics', label: 'CALISTHENICS'),
-    ChipOption(value: 'hiit', label: 'HIIT / CARDIO'),
-    ChipOption(value: 'never', label: 'NEVER TRAINED FORMALLY'),
+    ('weightlifting', 'Weightlifting'),
+    ('powerlifting', 'Powerlifting'),
+    ('crossfit', 'CrossFit'),
+    ('calisthenics', 'Calisthenics'),
+    ('hiit', 'HIIT/Cardio'),
+    ('never', 'Never trained formally'),
   ];
+
+  void _toggle(String key) {
+    final list = List<String>.from(_selected);
+    if (list.contains(key)) {
+      list.remove(key);
+    } else {
+      list.add(key);
+    }
+    setState(() => _selected = list);
+  }
 
   @override
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
-      percent: 45,
-      kicker: 'COMBAT EXPERIENCE',
-      subtitle: '…profiling prior disciplines.',
+      percent: 60,
+      subtitle: 'Profiling prior disciplines…',
+      title: 'Styles you have tried:',
       onBack: () => context.go('/limitations'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.yellow,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Training styles\nyou have tried',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 10,
+        children: [
+          for (final o in _options)
+            OnboardingChip(
+              label: o.$2,
+              selected: _selected.contains(o.$1),
+              onTap: () => _toggle(o.$1),
             ),
-            const SizedBox(height: AppSpace.s1),
-            Text(
-              'HELPS US PICK THE RIGHT STARTING INTENSITY.',
-              style: AppType.bodySM(color: AppPalette.textMuted),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            AppChipGroup<String>(
-              options: _options,
-              value: _selected,
-              mode: ChipMode.multi,
-              themeColor: AppPalette.yellow,
-              themeGlow: GlowColor.yellow,
-              onChanged: (v) => setState(
-                () => _selected = List<String>.from(v as List),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

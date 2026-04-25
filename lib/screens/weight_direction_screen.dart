@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/services/goals_service.dart';
-import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
@@ -42,46 +40,32 @@ class _WeightDirectionScreenState extends State<WeightDirectionScreen> {
   }
 
   static const _options = [
-    ('gain', 'GAIN', 'Bulk up, build mass'),
-    ('lose', 'LOSE', 'Cut, reveal the work'),
-    ('maintain', 'MAINTAIN', 'Hold steady, get stronger'),
+    ('gain', 'Gain', 'Bulk up, build mass'),
+    ('lose', 'Lose', 'Cut, reveal the work'),
+    ('maintain', 'Maintain', 'Hold steady, get stronger'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.attributes,
-      percent: 53,
-      kicker: 'PHYSICAL ATTRIBUTES',
-      subtitle: '…setting mass objective.',
+      percent: 72,
+      subtitle: 'Setting mass objective…',
+      title: 'Target weight goal?',
       nextEnabled: _value != null,
       onBack: () => context.go('/weight'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.teal,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Target weight\ngoal?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final o in _options)
+            OnboardingRadioTile(
+              label: o.$2,
+              subtitle: o.$3,
+              selected: _value == o.$1,
+              onTap: () => setState(() => _value = o.$1),
             ),
-            const SizedBox(height: AppSpace.s6),
-            ..._options.map(
-              (o) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.s3),
-                child: OnboardingRadioTile(
-                  label: o.$2,
-                  subtitle: o.$3,
-                  selected: _value == o.$1,
-                  themeColor: AppPalette.teal,
-                  onTap: () => setState(() => _value = o.$1),
-                ),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

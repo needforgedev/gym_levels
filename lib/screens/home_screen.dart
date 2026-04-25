@@ -2,30 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../data/models/muscle_rank.dart';
 import '../data/models/quest.dart' as model;
-import '../data/services/analytics_service.dart';
-import '../data/services/muscle_rank_service.dart';
-import '../data/services/player_service.dart';
 import '../data/models/workout.dart';
+import '../data/services/analytics_service.dart';
+import '../data/services/player_service.dart';
 import '../data/services/quest_service.dart';
 import '../data/services/workout_service.dart';
 import '../game/plan_generator.dart';
 import '../game/quest_engine.dart';
-import '../game/rank_engine.dart';
 import '../state/onboarding_flag.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
-import '../widgets/buttons.dart';
 import '../widgets/in_app_shell.dart';
-import '../widgets/muscle_figure.dart';
 import '../widgets/neon_card.dart';
 import '../widgets/pills.dart';
-import '../widgets/quest_row.dart';
-import '../widgets/rank_badge.dart';
+import '../widgets/progress_bar.dart';
 import '../widgets/tab_bar.dart';
-import '../widgets/xp_ring.dart';
 
+/// Home screen — matches design v2 (`design/v2/screens-home.jsx`).
+///
+/// Layout (top → bottom):
+///   1. Top bar — greeting + name + class line + avatar slot
+///   2. Level + Total XP strip — two side-by-side mini cards
+///   3. XP progress bar with shimmer
+///   4. Total Workouts + Streak row
+///   5. Next Workout card (clickable, opens Today's Workout)
+///   6. Today's Quest card
+///   7. START WORKOUT teal CTA
+///
+/// Floating glass tab bar lives at the bottom, layered by [InAppShell].
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -35,39 +40,34 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<model.Quest>> _dailyQuests;
-  late Future<List<MuscleRank>> _muscleRanks;
+  late Future<int> _totalWorkouts;
+  late Future<_HomeSession> _session;
 
   @override
   void initState() {
     super.initState();
     _dailyQuests = _loadDailyQuests();
-    _muscleRanks = MuscleRankService.getAll();
+    _totalWorkouts = WorkoutService.totalFinished();
+    _session = _loadSession();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCompleteOnboarding());
   }
 
-  /// Rotates the daily batch if none issued today, then returns today's
-  /// full batch (completed ones included). Completed quests stay visible
-  /// with a DONE state until tomorrow's rotation — matches the Quests tab.
   Future<List<model.Quest>> _loadDailyQuests() async {
     await QuestEngine.rotateDailyIfNeeded();
     return QuestService.issuedSince('daily', QuestEngine.todayEpoch());
   }
 
-  /// Summary label for the muscle-ranks card — averages `rank_xp` across the
-  /// tracked muscles and maps the result back to a tier name.
-  String _overallLabel(List<MuscleRank> ranks) {
-    if (ranks.isEmpty) return 'NO DATA YET';
-    final avg =
-        (ranks.fold<int>(0, (a, r) => a + r.rankXp) / ranks.length).round();
-    final a = RankEngine.assign(avg);
-    return a.subRank == null
-        ? 'AVG: ${a.rank.toUpperCase()}'
-        : 'AVG: ${a.rank.toUpperCase()} ${a.subRank}';
+  Future<_HomeSession> _loadSession() async {
+    final results = await Future.wait([
+      PlanGenerator.todaysSession(),
+      WorkoutService.finishedToday(),
+    ]);
+    return _HomeSession(
+      plan: results[0] as SessionPlan?,
+      doneToday: results[1] as Workout?,
+    );
   }
 
-  /// Fires once on first Home render after the user finishes the onboarding
-  /// flow. Writes `player.onboarded_at`, queues the analytics event, and
-  /// refreshes PlayerState so observers pick up the new state.
   Future<void> _maybeCompleteOnboarding() async {
     if (!mounted) return;
     final state = context.read<PlayerState>();
@@ -82,215 +82,389 @@ class _HomeScreenState extends State<HomeScreen> {
     await AnalyticsService.log('onboarding_completed', {
       'source': 'home_first_render',
     });
-    // Flip the router flag so subsequent cold starts (and any in-session
-    // navigation back to `/`) go straight to Home instead of re-running
-    // the onboarding flow.
     isOnboardedNotifier.value = true;
     if (!mounted) return;
     await state.refresh();
   }
 
+  void _startWorkout() {
+    context.go('/exercise-picker');
+  }
+
+  void _openTodaysWorkout() {
+    context.go('/home/todays-workout');
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<PlayerState>();
+    // The floating tab bar sits 24px above the home indicator. Reserve
+    // tabBarSafeBottom + safe-area bottom inset on the ListView so the
+    // last item (START WORKOUT) clears the bar instead of being clipped
+    // behind it.
+    final safeBottom = MediaQuery.of(context).padding.bottom;
     return InAppShell(
       active: AppTab.home,
       title: 'HOME',
+      showHeader: false,
       child: ListView(
-        padding: const EdgeInsets.all(AppSpace.s5),
+        padding: EdgeInsets.fromLTRB(
+          0,
+          0,
+          0,
+          InAppShell.tabBarSafeBottom + safeBottom,
+        ),
         children: [
-          Text(
-            '…welcome back, player.',
-            style: AppType.system(color: AppPalette.textMuted),
+          _TopBar(name: s.playerName, onAvatar: () => context.go('/profile')),
+          _LevelXpStrip(level: s.level, totalXp: s.totalXp),
+          _XpProgressBlock(
+            level: s.level,
+            xpInto: s.xpCurrent,
+            xpMax: s.xpMax,
           ),
-          const SizedBox(height: 4),
-          Text(
-            s.playerName.toUpperCase(),
-            style: AppType.displayLG(color: AppPalette.textPrimary),
+          _StatRow(
+            totalWorkoutsFuture: _totalWorkouts,
+            streak: s.streak,
+            onStreakTap: () => context.go('/streak'),
           ),
-          const SizedBox(height: AppSpace.s3),
-          Row(
-            children: [
-              LevelPill(level: s.level),
-              const SizedBox(width: AppSpace.s3),
-              StreakPill(count: s.streak),
-            ],
+          _NextWorkoutBlock(
+            future: _session,
+            onTap: _openTodaysWorkout,
           ),
-          const SizedBox(height: AppSpace.s4),
+          _TodaysQuestBlock(future: _dailyQuests),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: _StartWorkoutButton(onTap: _startWorkout),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-          // XP ring card
-          NeonCard(
-            glow: GlowColor.xp,
-            padding: const EdgeInsets.all(AppSpace.s6),
-            onTap: () => context.go('/profile'),
-            child: Row(
+class _HomeSession {
+  const _HomeSession({required this.plan, required this.doneToday});
+  final SessionPlan? plan;
+  final Workout? doneToday;
+}
+
+// ─── Top bar (greeting + name + class + avatar) ────────────
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.name, required this.onAvatar});
+  final String name;
+  final VoidCallback onAvatar;
+
+  String _classFor(BuildContext context) {
+    // Until the player_class_service is wired into PlayerState, hardcode
+    // the design v2 sample-data class label. Switch to `s.playerClass`
+    // once that's threaded.
+    return 'MASS BUILDER';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                XPRing(level: s.level, percent: s.xpPercent, size: 92),
-                const SizedBox(width: AppSpace.s5),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'NEXT LEVEL',
-                        style: AppType.label(color: AppPalette.textMuted),
+                Text(
+                  'Welcome back,',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppPalette.textMuted,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      _displayName(name),
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: AppPalette.textPrimary,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${s.xpCurrent} / ${s.xpMax}',
-                        style: AppType.monoLG(color: AppPalette.xpGold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${s.xpMax - s.xpCurrent} XP to LVL ${s.level + 1}',
-                        style: AppType.bodySM(color: AppPalette.textSecondary),
-                      ),
-                    ],
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('🔥', style: TextStyle(fontSize: 22)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ShaderMask(
+                  shaderCallback: (rect) => const LinearGradient(
+                    colors: [AppPalette.amber, AppPalette.amberSoft],
+                  ).createShader(rect),
+                  child: Text(
+                    'CLASS • ${_classFor(context)}',
+                    style: AppType.displaySM(color: Colors.white).copyWith(
+                      fontSize: 14,
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpace.s4),
-
-          // Today's Session — surfaces the PlanGenerator output. Rest day
-          // falls back to a "pick any" escape hatch to the exercise picker.
-          _TodaysSessionCard(),
-          const SizedBox(height: AppSpace.s3),
-          Align(
-            alignment: Alignment.centerRight,
-            child: GhostButton(
-              label: 'OR PICK ANY EXERCISE →',
-              onTap: () => context.go('/exercise-picker'),
+          GestureDetector(
+            onTap: onAvatar,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const _HeroAvatar(size: 48),
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppPalette.amber,
+                      border: Border.all(color: AppPalette.voidBg, width: 2),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpace.s4),
+        ],
+      ),
+    );
+  }
 
-          // Total Workouts card — reads from SQLite via FutureBuilder, taps
-          // through to the full history list.
-          _TotalWorkoutsCard(
-            onTap: () => context.go('/workouts'),
-          ),
-          const SizedBox(height: AppSpace.s4),
+  String _displayName(String raw) {
+    if (raw.isEmpty) return 'Player';
+    return raw[0].toUpperCase() + raw.substring(1);
+  }
+}
 
-          // Active quests
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                'ACTIVE QUESTS',
-                style: AppType.label(color: AppPalette.textMuted),
-              ),
-              GhostButton(
-                label: 'VIEW ALL →',
-                onTap: () => context.go('/quests'),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.s3),
-          FutureBuilder<List<model.Quest>>(
-            future: _dailyQuests,
-            builder: (ctx, snap) {
-              final quests = snap.data ?? const [];
-              if (quests.isEmpty) {
-                return Text(
-                  '> rotating today\'s quests…',
-                  style: AppType.system(color: AppPalette.textMuted),
-                );
-              }
-              // Show up to 2, but prefer in-progress quests over completed
-              // ones so the user sees what's actionable without losing the
-              // DONE state of a just-finished quest until tomorrow.
-              final sorted = [
-                ...quests.where((q) => !q.isCompleted),
-                ...quests.where((q) => q.isCompleted),
-              ];
-              return Column(
-                children: [
-                  for (final q in sorted.take(2)) ...[
-                    QuestRow(
-                      title: q.title,
-                      type: QuestType.daily,
-                      progress: q.isCompleted ? 1.0 : q.progressRatio,
-                      xp: q.xpReward,
-                      completed: q.isCompleted,
-                    ),
-                    const SizedBox(height: AppSpace.s3),
-                  ],
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: AppSpace.s4),
+/// Stylized character avatar — circular gradient disc with a violet ring,
+/// outer glow, and a simple painted face inside. Approximates the design v2
+/// `HeroAvatar` SVG (`design/v2/screens-home.jsx`).
+class _HeroAvatar extends StatelessWidget {
+  const _HeroAvatar({this.size = 48});
+  final double size;
 
-          // Muscle ranks — real data from RankEngine. Empty until the user
-          // logs their first sets.
-          NeonCard(
-            glow: GlowColor.none,
-            padding: const EdgeInsets.all(AppSpace.s5),
-            pulse: false,
-            onTap: () => context.go('/profile'),
-            child: FutureBuilder<List<MuscleRank>>(
-              future: _muscleRanks,
-              builder: (ctx, snap) {
-                final ranks = snap.data ?? const [];
-                final overall = _overallLabel(ranks);
-                // Show up to 5 most-trained muscles inline.
-                final top = [...ranks]
-                  ..sort((a, b) => b.rankXp.compareTo(a.rankXp));
-                final display = top.take(5).toList();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'MUSCLE RANKS',
-                                style: AppType.label(color: AppPalette.textMuted),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                overall,
-                                style: AppType.displayMD(
-                                  color: AppPalette.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const MuscleFigure(
-                          highlight: MuscleHighlight.chest,
-                          color: AppPalette.xpGold,
-                          size: 80,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpace.s4),
-                    if (display.isEmpty)
-                      Text(
-                        '> log a set to see your first rank.',
-                        style: AppType.system(color: AppPalette.textMuted),
-                      )
-                    else
-                      Row(
-                        children: [
-                          for (final r in display)
-                            _MuscleMini(
-                              name: r.muscle.toUpperCase(),
-                              rank: rankFromString(r.rank),
-                              sub: r.subRank ?? '—',
-                            ),
-                        ],
-                      ),
-                  ],
-                );
-              },
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2D1B4E), Color(0xFF1A0F2B)],
+        ),
+        border: Border.all(
+          color: AppPalette.purple.withValues(alpha: 0.5),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.purple.withValues(alpha: 0.3),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: CustomPaint(painter: _AvatarFacePainter()),
+      ),
+    );
+  }
+}
+
+/// Paints a flat anime-style head: dark hair cap on top, warm face oval
+/// below, two small violet "glow" eyes. Drawn proportional to the canvas
+/// so it scales with the parent's size.
+class _AvatarFacePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Face oval (light skin tone, slightly transparent so the dark gradient
+    // behind shows through subtly).
+    final facePaint = Paint()..color = const Color(0xD9F0D5B8);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.5, h * 0.62),
+        width: w * 0.55,
+        height: h * 0.62,
+      ),
+      facePaint,
+    );
+
+    // Hair cap (dark) — sits across the top half, dipping just over the
+    // forehead. Use a path for the silhouette.
+    final hairPaint = Paint()..color = const Color(0xFF1A0F2B);
+    final hair = Path()
+      ..moveTo(w * 0.18, h * 0.45)
+      ..quadraticBezierTo(w * 0.18, h * 0.12, w * 0.5, h * 0.10)
+      ..quadraticBezierTo(w * 0.82, h * 0.12, w * 0.82, h * 0.45)
+      ..lineTo(w * 0.78, h * 0.40)
+      ..lineTo(w * 0.70, h * 0.50)
+      ..lineTo(w * 0.62, h * 0.42)
+      ..lineTo(w * 0.50, h * 0.50)
+      ..lineTo(w * 0.40, h * 0.42)
+      ..lineTo(w * 0.32, h * 0.50)
+      ..lineTo(w * 0.22, h * 0.40)
+      ..close();
+    canvas.drawPath(hair, hairPaint);
+
+    // Eyes — violet glow. Two narrow ellipses.
+    final eyePaint = Paint()..color = AppPalette.purple;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.40, h * 0.62),
+        width: w * 0.08,
+        height: h * 0.10,
+      ),
+      eyePaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.60, h * 0.62),
+        width: w * 0.08,
+        height: h * 0.10,
+      ),
+      eyePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AvatarFacePainter oldDelegate) => false;
+}
+
+// ─── Level + Total XP strip ────────────────────────────────
+class _LevelXpStrip extends StatelessWidget {
+  const _LevelXpStrip({required this.level, required this.totalXp});
+  final int level;
+  final int totalXp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      // Design v2 widths: Level flex 1, Total XP flex 1.3. Flutter's flex is
+      // int-only, so use 10:13 to preserve the same proportions.
+      child: Row(
+        children: [
+          Expanded(
+            flex: 10,
+            child: _StripCard(
+              icon: Icons.star,
+              iconColor: AppPalette.amber,
+              kicker: 'LEVEL',
+              value: 'LV $level',
+              valueColor: AppPalette.amber,
+              tint: AppPalette.amber,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 13,
+            child: _StripCard(
+              icon: Icons.bolt,
+              iconColor: AppPalette.purpleSoft,
+              kicker: 'TOTAL XP',
+              value: _format(totalXp),
+              valueColor: AppPalette.purpleSoft,
+              tint: AppPalette.purple,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _format(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      final fromEnd = s.length - i;
+      buf.write(s[i]);
+      if (fromEnd > 1 && fromEnd % 3 == 1) buf.write(',');
+    }
+    return buf.toString();
+  }
+}
+
+class _StripCard extends StatelessWidget {
+  const _StripCard({
+    required this.icon,
+    required this.iconColor,
+    required this.kicker,
+    required this.value,
+    required this.valueColor,
+    required this.tint,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String kicker;
+  final String value;
+  final Color valueColor;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tint.withValues(alpha: 0.20),
+            tint.withValues(alpha: 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: tint.withValues(alpha: 0.40),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: iconColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  kicker,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                    color: AppPalette.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: AppType.displayMD(color: valueColor)
+                        .copyWith(fontSize: 22, height: 1),
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -299,243 +473,741 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _TodaysSessionCard extends StatelessWidget {
-  Future<_SessionCardState> _load() async {
-    final results = await Future.wait([
-      PlanGenerator.todaysSession(),
-      WorkoutService.finishedToday(),
-    ]);
-    return _SessionCardState(
-      plan: results[0] as SessionPlan?,
-      doneToday: results[1] as Workout?,
-    );
-  }
+// ─── XP progress block ─────────────────────────────────────
+class _XpProgressBlock extends StatelessWidget {
+  const _XpProgressBlock({
+    required this.level,
+    required this.xpInto,
+    required this.xpMax,
+  });
+
+  final int level;
+  final int xpInto;
+  final int xpMax;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_SessionCardState>(
-      future: _load(),
-      builder: (ctx, snap) {
-        final data = snap.data;
-        final plan = data?.plan;
-        final done = data?.doneToday;
-        final settled = snap.connectionState == ConnectionState.done;
-        final didToday = done != null;
-        final noScheduleYet = settled && plan == null && !didToday;
-        final noMatches =
-            !didToday && plan != null && plan.exercises.isEmpty;
-        final isOptional =
-            !didToday && plan != null && !plan.isScheduled;
-
-        // Five states, distinguished by tap target and copy:
-        //   0) done today         → "/workouts/<id>"      (green, check)
-        //   1) no schedule        → "/training-days"      (teal, play)
-        //   2) no equipment match → "/equipment"          (teal, tune)
-        //   3) optional day       → "/home/todays-workout" (teal, moon)
-        //   4) scheduled          → "/home/todays-workout" (purple, play)
-        final String tapRoute;
-        if (didToday) {
-          tapRoute = '/workouts/${done.id}';
-        } else if (noScheduleYet) {
-          tapRoute = '/training-days';
-        } else if (noMatches) {
-          tapRoute = '/equipment';
-        } else {
-          tapRoute = '/home/todays-workout';
-        }
-
-        final Color accent;
-        final GlowColor glow;
-        if (didToday) {
-          accent = AppPalette.green;
-          glow = GlowColor.green;
-        } else if (noScheduleYet || noMatches || isOptional) {
-          accent = AppPalette.teal;
-          glow = GlowColor.teal;
-        } else {
-          accent = AppPalette.purple;
-          glow = GlowColor.purple;
-        }
-
-        final IconData icon;
-        if (didToday) {
-          icon = Icons.check;
-        } else if (noMatches) {
-          icon = Icons.tune;
-        } else if (isOptional) {
-          icon = Icons.bedtime;
-        } else {
-          icon = Icons.play_arrow;
-        }
-
-        final String kicker;
-        final String title;
-        final String subtitle;
-        if (didToday) {
-          kicker = 'COMPLETED TODAY';
-          title = (plan?.focus ?? 'SESSION LOGGED');
-          final xp = done.xpEarned;
-          final vol = done.volumeKg.round();
-          subtitle = 'Tap to view session · +$xp XP · ${vol}kg volume';
-        } else if (noScheduleYet) {
-          kicker = 'NO SCHEDULE SET';
-          title = 'PICK TRAINING DAYS';
-          subtitle = 'Tap to set your weekly training days.';
-        } else if (noMatches) {
-          kicker = 'EQUIPMENT MISSING';
-          title = plan.focus;
-          subtitle =
-              'No exercises match your gear for ${plan.focus.toLowerCase()} day. Tap to add equipment.';
-        } else if (isOptional) {
-          kicker = 'OPTIONAL · NOT SCHEDULED';
-          title = plan.focus;
-          subtitle =
-              '${plan.exercises.length} exercises · today is a rest day, train anyway?';
-        } else {
-          kicker = "TODAY'S PROTOCOL";
-          title = plan?.focus ?? 'LOADING…';
-          subtitle = plan == null
-              ? '…calibrating your session'
-              : '${plan.exercises.length} exercises · ~${plan.estimatedMinutes} min';
-        }
-
-        return NeonCard(
-          glow: glow,
-          padding: const EdgeInsets.all(AppSpace.s5),
-          onTap: () => GoRouter.of(context).go(tapRoute),
-          child: Row(
+    final pct = xpMax == 0 ? 0.0 : (xpInto / xpMax * 100).clamp(0, 100);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(kicker, style: AppType.label(color: accent)),
-                    const SizedBox(height: 4),
-                    Text(
-                      title,
-                      style:
-                          AppType.displayMD(color: AppPalette.textPrimary),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style:
-                          AppType.bodySM(color: AppPalette.textSecondary),
-                    ),
-                  ],
+              Text(
+                'Progress to Level ${level + 1}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppPalette.textMuted,
                 ),
               ),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: accent,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: accent, blurRadius: 16),
-                  ],
-                ),
-                child: Icon(
-                  icon,
-                  color: AppPalette.obsidian,
-                  size: 22,
+              Text(
+                '${pct.round()}%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppPalette.amber,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 8),
+          XpBar(percent: pct.toDouble(), height: 10),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$xpInto XP',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppPalette.textDim,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              Text(
+                '$xpMax XP',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppPalette.textDim,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _SessionCardState {
-  const _SessionCardState({required this.plan, required this.doneToday});
-  final SessionPlan? plan;
-  final Workout? doneToday;
+// ─── Total + Streak row ────────────────────────────────────
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.totalWorkoutsFuture,
+    required this.streak,
+    required this.onStreakTap,
+  });
+
+  final Future<int> totalWorkoutsFuture;
+  final int streak;
+  final VoidCallback onStreakTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: FutureBuilder<int>(
+              future: totalWorkoutsFuture,
+              builder: (ctx, snap) => _StatTile(
+                kicker: 'TOTAL',
+                value: '${snap.data ?? 0}',
+                caption: 'Workouts',
+                icon: Icons.fitness_center,
+                accent: AppPalette.purpleSoft,
+                valueColor: AppPalette.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _StatTile(
+              kicker: 'STREAK',
+              value: '$streak',
+              caption: streak > 0 ? 'On fire!' : 'Start today',
+              captionColor: AppPalette.streak,
+              captionItalic: true,
+              icon: Icons.local_fire_department,
+              accent: AppPalette.streak,
+              valueColor: AppPalette.streak,
+              valueGlow: true,
+              animateIcon: streak > 0,
+              onTap: onStreakTap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _TotalWorkoutsCard extends StatelessWidget {
-  const _TotalWorkoutsCard({required this.onTap});
-  final VoidCallback onTap;
+class _StatTile extends StatefulWidget {
+  const _StatTile({
+    required this.kicker,
+    required this.value,
+    required this.caption,
+    required this.icon,
+    required this.accent,
+    required this.valueColor,
+    this.captionColor,
+    this.captionItalic = false,
+    this.valueGlow = false,
+    this.animateIcon = false,
+    this.onTap,
+  });
+
+  final String kicker;
+  final String value;
+  final String caption;
+  final IconData icon;
+  final Color accent;
+  final Color valueColor;
+  final Color? captionColor;
+  final bool captionItalic;
+  final bool valueGlow;
+  final bool animateIcon;
+  final VoidCallback? onTap;
+
+  @override
+  State<_StatTile> createState() => _StatTileState();
+}
+
+class _StatTileState extends State<_StatTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    if (widget.animateIcon) _ctl.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return NeonCard(
-      glow: GlowColor.teal,
-      padding: const EdgeInsets.all(AppSpace.s5),
+      padding: const EdgeInsets.all(14),
+      glow: GlowColor.purple,
       pulse: false,
-      onTap: onTap,
-      child: FutureBuilder<int>(
-        future: WorkoutService.totalFinished(),
-        builder: (ctx, snap) {
-          final count = snap.data ?? 0;
-          return Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TOTAL WORKOUTS',
-                      style: AppType.label(color: AppPalette.teal),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$count',
-                      style: AppType.monoXL(color: AppPalette.teal).copyWith(
-                        fontSize: 40,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      count == 0
-                          ? 'your journey begins'
-                          : 'tap to view history',
-                      style: AppType.bodySM(color: AppPalette.textSecondary),
-                    ),
-                  ],
+      onTap: widget.onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.kicker,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                    color: AppPalette.textMuted,
+                  ),
                 ),
-              ),
-              const Icon(
-                Icons.history,
-                color: AppPalette.teal,
-                size: 32,
-              ),
-            ],
-          );
-        },
+                const SizedBox(height: 4),
+                Text(
+                  widget.value,
+                  style: AppType.displayLG(color: widget.valueColor).copyWith(
+                    fontSize: 34,
+                    height: 1,
+                    shadows: widget.valueGlow
+                        ? [
+                            Shadow(
+                              color: widget.accent.withValues(alpha: 0.6),
+                              blurRadius: 12,
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.caption,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: widget.captionColor ?? AppPalette.textMuted,
+                    fontStyle: widget.captionItalic
+                        ? FontStyle.italic
+                        : FontStyle.normal,
+                    fontWeight: widget.captionItalic
+                        ? FontWeight.w500
+                        : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedBuilder(
+            animation: _ctl,
+            builder: (context, _) {
+              final glow = widget.animateIcon
+                  ? 6 + _ctl.value * 8
+                  : 6.0;
+              return Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: widget.accent.withValues(alpha: 0.15),
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 22,
+                  color: widget.accent,
+                  shadows: widget.animateIcon
+                      ? [
+                          Shadow(
+                            color: widget.accent.withValues(
+                              alpha: 0.5 + _ctl.value * 0.4,
+                            ),
+                            blurRadius: glow.toDouble(),
+                          ),
+                        ]
+                      : null,
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 }
 
-class _MuscleMini extends StatelessWidget {
-  const _MuscleMini({
-    required this.name,
-    required this.rank,
-    required this.sub,
-  });
+// ─── Next Workout block (real plan + done-today + no-schedule states) ─
+class _NextWorkoutBlock extends StatelessWidget {
+  const _NextWorkoutBlock({required this.future, required this.onTap});
+  final Future<_HomeSession> future;
+  final VoidCallback onTap;
 
-  final String name;
-  final Rank rank;
-  final String sub;
+  /// Maps the focus label back to a muscle-grouping category for the
+  /// subtitle line on the Next Workout card. Matches the design's
+  /// `USER.nextWorkout.category` field.
+  static String _categoryFor(String focus) {
+    final f = focus.toLowerCase();
+    if (f.contains('push') || f.contains('pull') || f.contains('upper')) {
+      return 'Upper Body';
+    }
+    if (f.contains('leg') || f.contains('lower')) return 'Lower Body';
+    if (f.contains('full')) return 'Full Body';
+    return 'Mixed';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          RankBadge(rank: rank, subRank: sub, size: 32),
-          const SizedBox(height: 4),
-          Text(
-            name,
-            style: AppType.label(color: AppPalette.textMuted).copyWith(
-              fontSize: 9,
+          const Text(
+            'NEXT WORKOUT',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: AppPalette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<_HomeSession>(
+            future: future,
+            builder: (ctx, snap) {
+              final data = snap.data;
+              final plan = data?.plan;
+              final done = data?.doneToday;
+              final settled = snap.connectionState == ConnectionState.done;
+
+              if (!settled) {
+                return _NextWorkoutCard(
+                  title: 'LOADING…',
+                  subtitle: '…calibrating your session',
+                  pills: const [],
+                  iconAccent: AppPalette.purpleSoft,
+                  onTap: null,
+                );
+              }
+              if (done != null) {
+                return _NextWorkoutCard(
+                  title: (plan?.focus ?? 'COMPLETED'),
+                  subtitle:
+                      'Done today · +${done.xpEarned} XP · ${done.volumeKg.round()}kg',
+                  pills: const [],
+                  iconAccent: AppPalette.success,
+                  iconData: Icons.check_circle,
+                  onTap: () => GoRouter.of(context).go('/workouts/${done.id}'),
+                  glow: GlowColor.green,
+                );
+              }
+              if (plan == null) {
+                return _NextWorkoutCard(
+                  title: 'PICK TRAINING DAYS',
+                  subtitle: 'Tap to set your weekly schedule.',
+                  pills: const [],
+                  iconAccent: AppPalette.teal,
+                  iconData: Icons.event_outlined,
+                  onTap: () => GoRouter.of(context).go('/training-days'),
+                  glow: GlowColor.teal,
+                );
+              }
+              if (plan.exercises.isEmpty) {
+                return _NextWorkoutCard(
+                  title: plan.focus,
+                  subtitle: 'No matching exercises — tap to add equipment.',
+                  pills: const [],
+                  iconAccent: AppPalette.teal,
+                  iconData: Icons.tune,
+                  onTap: () => GoRouter.of(context).go('/equipment'),
+                  glow: GlowColor.teal,
+                );
+              }
+              final muscleSet = <String>{};
+              for (final e in plan.exercises) {
+                final lower = e.name.toLowerCase();
+                if (lower.contains('press') || lower.contains('bench') || lower.contains('push')) {
+                  muscleSet.add('Chest');
+                }
+                if (lower.contains('shoulder') || lower.contains('lateral') || lower.contains('overhead')) {
+                  muscleSet.add('Shoulders');
+                }
+                if (lower.contains('tricep') || lower.contains('dip')) {
+                  muscleSet.add('Triceps');
+                }
+                if (lower.contains('row') || lower.contains('pull')) {
+                  muscleSet.add('Back');
+                }
+                if (lower.contains('curl') && !lower.contains('nordic')) {
+                  muscleSet.add('Biceps');
+                }
+                if (lower.contains('squat') || lower.contains('lunge')) {
+                  muscleSet.add('Legs');
+                }
+                if (lower.contains('glute') || lower.contains('bridge')) {
+                  muscleSet.add('Glutes');
+                }
+              }
+              final pills = muscleSet.take(3).toList();
+
+              return _NextWorkoutCard(
+                title: plan.focus,
+                subtitle:
+                    '${_categoryFor(plan.focus)} · ~${plan.estimatedMinutes} min · ${plan.exercises.length} exercises',
+                pills: pills,
+                iconAccent: AppPalette.purpleSoft,
+                onTap: onTap,
+                glow: plan.isScheduled ? GlowColor.purple : GlowColor.teal,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NextWorkoutCard extends StatelessWidget {
+  const _NextWorkoutCard({
+    required this.title,
+    required this.subtitle,
+    required this.pills,
+    required this.iconAccent,
+    this.iconData = Icons.fitness_center,
+    this.onTap,
+    this.glow = GlowColor.purple,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<String> pills;
+  final Color iconAccent;
+  final IconData iconData;
+  final VoidCallback? onTap;
+  final GlowColor glow;
+
+  @override
+  Widget build(BuildContext context) {
+    return NeonCard(
+      glow: glow,
+      pulse: false,
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      onTap: onTap,
+      // IntrinsicHeight makes the Row size to the tallest child's natural
+      // height so the violet icon column on the left can stretch alongside
+      // the text column on the right (the CSS prototype gets this for free
+      // via flex's `align-items: stretch`).
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 80,
+              decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  iconAccent.withValues(alpha: 0.30),
+                  iconAccent.withValues(alpha: 0.10),
+                ],
+              ),
+              border: Border(
+                right: BorderSide(
+                  color: iconAccent.withValues(alpha: 0.20),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Center(
+              child: Icon(iconData, size: 36, color: iconAccent),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: AppType.displayMD(color: AppPalette.textPrimary)
+                        .copyWith(fontSize: 22, height: 1),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppPalette.textMuted,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (pills.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final p in pills)
+                          AppPill(label: p, dense: true),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Icon(
+              Icons.chevron_right,
+              color: AppPalette.textMuted,
+              size: 20,
             ),
           ),
         ],
+      ),
+      ),
+    );
+  }
+}
+
+// ─── Today's Quest block ───────────────────────────────────
+class _TodaysQuestBlock extends StatelessWidget {
+  const _TodaysQuestBlock({required this.future});
+  final Future<List<model.Quest>> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            "TODAY'S QUEST",
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: AppPalette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<List<model.Quest>>(
+            future: future,
+            builder: (ctx, snap) {
+              final quests = snap.data ?? const <model.Quest>[];
+              if (quests.isEmpty) {
+                return _QuestCard(
+                  title: 'Rotating today\'s quests…',
+                  progress: 0,
+                  subtitle: '',
+                  reward: 0,
+                  done: false,
+                );
+              }
+              // Show the first not-yet-completed quest; if all done, show
+              // the first completed one stamped DONE.
+              final pending = quests.firstWhere(
+                (q) => !q.isCompleted,
+                orElse: () => quests.first,
+              );
+              final p = pending.target == 0
+                  ? 0.0
+                  : pending.progress / pending.target;
+              return _QuestCard(
+                title: pending.title,
+                progress: pending.isCompleted ? 1.0 : p.clamp(0.0, 1.0),
+                subtitle:
+                    'Progress: ${pending.progress} / ${pending.target}',
+                reward: pending.xpReward,
+                done: pending.isCompleted,
+                onTap: () => GoRouter.of(context).go('/quests'),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestCard extends StatelessWidget {
+  const _QuestCard({
+    required this.title,
+    required this.progress,
+    required this.subtitle,
+    required this.reward,
+    required this.done,
+    this.onTap,
+  });
+
+  final String title;
+  final double progress;
+  final String subtitle;
+  final int reward;
+  final bool done;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = done ? AppPalette.success : AppPalette.amber;
+    return NeonCard(
+      padding: const EdgeInsets.all(14),
+      glow: GlowColor.purple,
+      pulse: false,
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: accent.withValues(alpha: 0.15),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.30),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              done ? Icons.check : Icons.gps_fixed,
+              size: 20,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppPalette.textPrimary,
+                    decoration:
+                        done ? TextDecoration.lineThrough : TextDecoration.none,
+                  ),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppPalette.textMuted,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: SizedBox(
+                    height: 4,
+                    child: Stack(
+                      children: [
+                        Container(
+                          color: accent.withValues(alpha: 0.15),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: progress.clamp(0.0, 1.0),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: accent,
+                              boxShadow: [
+                                BoxShadow(color: accent, blurRadius: 6),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '+$reward XP',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: accent,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Start Workout teal CTA ────────────────────────────────
+class _StartWorkoutButton extends StatelessWidget {
+  const _StartWorkoutButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 58,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF19E3E3), Color(0xFF0EC6C6)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppPalette.teal.withValues(alpha: 0.30),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.play_arrow,
+                size: 18,
+                color: AppPalette.voidBg,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'START WORKOUT',
+                style: AppType.displaySM(color: AppPalette.voidBg).copyWith(
+                  fontSize: 16,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

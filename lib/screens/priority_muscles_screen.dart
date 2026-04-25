@@ -3,8 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../data/services/goals_service.dart';
 import '../theme/tokens.dart';
-import '../widgets/chips.dart';
-import '../widgets/neon_card.dart';
+import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -38,21 +37,27 @@ class _PriorityMusclesScreenState extends State<PriorityMusclesScreen> {
   }
 
   static const _options = [
-    ChipOption(value: 'chest', label: 'CHEST'),
-    ChipOption(value: 'back', label: 'BACK'),
-    ChipOption(value: 'shoulders', label: 'SHOULDERS'),
-    ChipOption(value: 'biceps', label: 'BICEPS'),
-    ChipOption(value: 'triceps', label: 'TRICEPS'),
-    ChipOption(value: 'core', label: 'CORE / ABS'),
-    ChipOption(value: 'quads', label: 'QUADS'),
-    ChipOption(value: 'hamstrings', label: 'HAMSTRINGS'),
-    ChipOption(value: 'glutes', label: 'GLUTES'),
-    ChipOption(value: 'calves', label: 'CALVES'),
+    ('chest', 'Chest'),
+    ('back', 'Back'),
+    ('shoulders', 'Shoulders'),
+    ('biceps', 'Biceps'),
+    ('triceps', 'Triceps'),
+    ('core', 'Core/Abs'),
+    ('quads', 'Quads'),
+    ('hamstrings', 'Hamstrings'),
+    ('glutes', 'Glutes'),
+    ('calves', 'Calves'),
   ];
 
-  void _onChanged(Object? v) {
-    final list = List<String>.from(v as List);
-    if (list.length > _cap) return;
+  void _toggle(String key) {
+    final list = List<String>.from(_selected);
+    if (list.contains(key)) {
+      list.remove(key);
+    } else if (list.length < _cap) {
+      list.add(key);
+    } else {
+      return;
+    }
     setState(() => _selected = list);
   }
 
@@ -60,51 +65,33 @@ class _PriorityMusclesScreenState extends State<PriorityMusclesScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.objectives,
-      percent: 20,
-      kicker: 'MISSION OBJECTIVES',
-      subtitle: '…prioritising target muscle groups.',
+      percent: 30,
+      subtitle: 'Prioritising target muscle groups…',
+      title: 'Pick up to 3 muscle groups.',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go('/body-type'),
       onNext: _save,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          NeonCard(
-            glow: GlowColor.purple,
-            padding: const EdgeInsets.all(AppSpace.s6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Pick up to 3\nmuscle groups',
-                  style: AppType.displayLG(color: AppPalette.textPrimary),
+          Wrap(
+            spacing: 8,
+            runSpacing: 10,
+            children: [
+              for (final o in _options)
+                OnboardingChip(
+                  label: o.$2,
+                  selected: _selected.contains(o.$1),
+                  disabled: !_selected.contains(o.$1) &&
+                      _selected.length >= _cap,
+                  onTap: () => _toggle(o.$1),
                 ),
-                const SizedBox(height: AppSpace.s1),
-                Text(
-                  'THESE GET WEIGHTED 1.5× IN YOUR RANK MATH.',
-                  style: AppType.bodySM(color: AppPalette.textMuted),
-                ),
-                const SizedBox(height: AppSpace.s6),
-                AppChipGroup<String>(
-                  options: _options,
-                  value: _selected,
-                  mode: ChipMode.multi,
-                  themeColor: AppPalette.purple,
-                  themeGlow: GlowColor.purple,
-                  onChanged: _onChanged,
-                ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: AppSpace.s4),
-          NeonCard(
-            glow: GlowColor.none,
-            padding: const EdgeInsets.all(AppSpace.s4),
-            pulse: false,
-            child: Text(
-              '> priority slots: ${_selected.length} / $_cap',
-              style: AppType.system(color: AppPalette.textSecondary),
-            ),
+          const SizedBox(height: 16),
+          Text(
+            '${_selected.length} / $_cap selected · weighted 1.5× in rank math',
+            style: AppType.system(color: AppPalette.textMuted),
           ),
         ],
       ),

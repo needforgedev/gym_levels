@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/services/experience_service.dart';
-import '../theme/tokens.dart';
-import '../widgets/chips.dart';
-import '../widgets/neon_card.dart';
+import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -41,65 +39,55 @@ class _LimitationsScreenState extends State<LimitationsScreen> {
   }
 
   static const _options = [
-    ChipOption(value: _none, label: 'NONE'),
-    ChipOption(value: 'lower_back', label: 'LOWER BACK'),
-    ChipOption(value: 'knee', label: 'KNEE'),
-    ChipOption(value: 'shoulder', label: 'SHOULDER'),
-    ChipOption(value: 'wrist_elbow', label: 'WRIST / ELBOW'),
-    ChipOption(value: 'hip', label: 'HIP'),
-    ChipOption(value: 'neck', label: 'NECK'),
-    ChipOption(value: 'other_joint', label: 'OTHER JOINT'),
-    ChipOption(value: 'chronic', label: 'CHRONIC CONDITION'),
+    (_none, 'None'),
+    ('lower_back', 'Lower Back'),
+    ('knee', 'Knee'),
+    ('shoulder', 'Shoulder'),
+    ('wrist_elbow', 'Wrist / Elbow'),
+    ('hip', 'Hip'),
+    ('neck', 'Neck'),
+    ('other_joint', 'Other Joint'),
+    ('chronic', 'Chronic Condition'),
   ];
 
-  void _onChanged(Object? v) {
-    final next = List<String>.from(v as List);
-    // Selecting `none` clears everything else; selecting any other removes `none`.
-    if (next.contains(_none) && !_selected.contains(_none)) {
+  void _toggle(String key) {
+    final list = List<String>.from(_selected);
+    if (key == _none) {
+      // Selecting `none` clears every other selection.
       setState(() => _selected = [_none]);
-    } else if (next.length > 1 && next.contains(_none)) {
-      setState(() => _selected = next.where((e) => e != _none).toList());
-    } else {
-      setState(() => _selected = next);
+      return;
     }
+    list.remove(_none);
+    if (list.contains(key)) {
+      list.remove(key);
+    } else {
+      list.add(key);
+    }
+    if (list.isEmpty) list.add(_none);
+    setState(() => _selected = list);
   }
 
   @override
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
-      percent: 42,
-      kicker: 'COMBAT EXPERIENCE',
-      subtitle: '…logging injury history.',
+      percent: 54,
+      subtitle: 'Logging injury history…',
+      title: 'Any injuries or limitations?',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go('/equipment'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.yellow,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Any injuries\nor limitations?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 10,
+        children: [
+          for (final o in _options)
+            OnboardingChip(
+              label: o.$2,
+              selected: _selected.contains(o.$1),
+              onTap: () => _toggle(o.$1),
             ),
-            const SizedBox(height: AppSpace.s1),
-            Text(
-              'WE WILL SWAP EXERCISES AROUND THESE.',
-              style: AppType.bodySM(color: AppPalette.textMuted),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            AppChipGroup<String>(
-              options: _options,
-              value: _selected,
-              mode: ChipMode.multi,
-              themeColor: AppPalette.yellow,
-              themeGlow: GlowColor.yellow,
-              onChanged: _onChanged,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -6,7 +6,6 @@ import '../data/services/player_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/placeholder_block.dart';
 import '../widgets/progress_header.dart';
@@ -66,50 +65,35 @@ class _BodyFatScreenState extends State<BodyFatScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.attributes,
-      percent: 57,
-      kicker: 'PHYSICAL ATTRIBUTES',
-      subtitle: '…estimating composition. (not medical advice)',
+      percent: 84,
+      subtitle: 'Estimating composition (not medical advice)…',
+      title: 'Estimate your body fat:',
       onBack: () => context.go('/weight-direction'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.teal,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Estimate your\nbody fat',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
-            ),
-            const SizedBox(height: AppSpace.s5),
-            Center(
-              child: SizedBox(
-                height: 160,
-                width: 140,
-                child: PlaceholderBlock(
-                  label: _labels[_stop]!,
-                  height: 160,
-                  color: AppPalette.teal,
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: SizedBox(
+              height: 180,
+              width: 160,
+              child: PlaceholderBlock(
+                label: _labels[_stop]!,
+                height: 180,
+                color: AppPalette.amber,
               ),
             ),
-            const SizedBox(height: AppSpace.s5),
-            BigSlider(
-              value: _stop.toDouble(),
-              min: 1,
-              max: 4,
-              divisions: 3,
-              label: _labels[_stop],
-              themeColor: AppPalette.teal,
-              onChanged: (v) => setState(() => _stop = v.round()),
-            ),
-            const SizedBox(height: AppSpace.s3),
-            Text(
-              '> key: ${_keys[_stop]}',
-              style: AppType.system(color: AppPalette.textMuted),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpace.s5),
+          BigSlider(
+            value: _stop.toDouble(),
+            min: 1,
+            max: 4,
+            divisions: 3,
+            label: _labels[_stop],
+            onChanged: (v) => setState(() => _stop = v.round()),
+          ),
+        ],
       ),
     );
   }

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../data/services/schedule_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -83,67 +82,58 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
     final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.operations,
-      percent: 65,
-      kicker: 'DAILY OPERATIONS',
-      subtitle: '…locking weekly tempo.',
+      percent: 90,
+      subtitle: 'Locking weekly tempo…',
+      title: 'Which days can you train?',
       nextEnabled: _days.length >= 2,
       onBack: () => context.go(onboarded ? '/home' : '/calibrating/4'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.green,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Which days\ncan you train?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
-            ),
-            const SizedBox(height: AppSpace.s5),
-            Row(
-              children: [
-                _PresetButton(
-                  label: '3 DAYS',
-                  active: _activePreset('3'),
-                  onTap: () => _applyPreset('3'),
-                ),
-                const SizedBox(width: 8),
-                _PresetButton(
-                  label: '5 DAYS',
-                  active: _activePreset('5'),
-                  onTap: () => _applyPreset('5'),
-                ),
-                const SizedBox(width: 8),
-                _PresetButton(
-                  label: 'EVERY DAY',
-                  active: _activePreset('every'),
-                  onTap: () => _applyPreset('every'),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpace.s5),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(7, (i) {
-                final on = _days.contains(i);
-                return _DayToggle(
-                  letter: _dayLabels[i],
-                  selected: on,
-                  onTap: () => _toggleDay(i),
-                );
-              }),
-            ),
-            const SizedBox(height: AppSpace.s4),
-            Text(
-              '> ${_days.length} / 7 days selected · min 2',
-              style: AppType.system(
-                color: _days.length >= 2
-                    ? AppPalette.textMuted
-                    : AppPalette.danger,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _PresetButton(
+                label: '3 DAYS',
+                active: _activePreset('3'),
+                onTap: () => _applyPreset('3'),
               ),
+              const SizedBox(width: 8),
+              _PresetButton(
+                label: '5 DAYS',
+                active: _activePreset('5'),
+                onTap: () => _applyPreset('5'),
+              ),
+              const SizedBox(width: 8),
+              _PresetButton(
+                label: 'EVERY DAY',
+                active: _activePreset('every'),
+                onTap: () => _applyPreset('every'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(7, (i) {
+              final on = _days.contains(i);
+              return _DayToggle(
+                letter: _dayLabels[i],
+                selected: on,
+                onTap: () => _toggleDay(i),
+              );
+            }),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Text(
+            '${_days.length} / 7 days selected · min 2',
+            style: AppType.system(
+              color: _days.length >= 2
+                  ? AppPalette.textMuted
+                  : AppPalette.danger,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -173,18 +163,23 @@ class _PresetButton extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: active
-                  ? AppPalette.green.withValues(alpha: 0.15)
-                  : AppPalette.slate,
+                  ? AppPalette.amber.withValues(alpha: 0.18)
+                  : AppPalette.purple.withValues(alpha: 0.08),
               border: Border.all(
-                color: active ? AppPalette.green : AppPalette.strokeSubtle,
+                color: active
+                    ? AppPalette.amber.withValues(alpha: 0.55)
+                    : AppPalette.purple.withValues(alpha: 0.25),
               ),
               borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Text(
               label,
-              style: AppType.label(
-                color: active ? AppPalette.green : AppPalette.textSecondary,
-              ).copyWith(fontSize: 11),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: active ? AppPalette.amber : AppPalette.textSecondary,
+              ),
             ),
           ),
         ),
@@ -216,24 +211,30 @@ class _DayToggle extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? AppPalette.green : AppPalette.slate,
+            color: selected
+                ? AppPalette.amber
+                : AppPalette.purple.withValues(alpha: 0.08),
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? AppPalette.green : AppPalette.strokeSubtle,
+              color: selected
+                  ? AppPalette.amber
+                  : AppPalette.purple.withValues(alpha: 0.30),
             ),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppPalette.green.withValues(alpha: 0.5),
-                      blurRadius: 10,
+                      color: AppPalette.amber.withValues(alpha: 0.55),
+                      blurRadius: 12,
                     ),
                   ]
                 : null,
           ),
           child: Text(
             letter,
-            style: AppType.label(
-              color: selected ? AppPalette.obsidian : AppPalette.textSecondary,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: selected ? AppPalette.voidBg : AppPalette.textSecondary,
             ),
           ),
         ),

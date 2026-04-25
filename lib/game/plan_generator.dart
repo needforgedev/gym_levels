@@ -59,15 +59,17 @@ class PlanGenerator {
     ],
   };
 
-  /// Human-readable headline. Used by Today's Workout chip-row.
+  /// Human-readable headline. Matches design v2 sample copy
+  /// (`design/v2/shared.jsx` USER.nextWorkout.title) — push/pull/legs get
+  /// a "DAY" suffix, upper/lower/full keep the "BODY" suffix.
   static String _focusLabel(String focus) {
     switch (focus) {
       case 'push':
-        return 'PUSH';
+        return 'PUSH DAY';
       case 'pull':
-        return 'PULL';
+        return 'PULL DAY';
       case 'legs':
-        return 'LEGS';
+        return 'LEG DAY';
       case 'upper':
         return 'UPPER BODY';
       case 'lower':

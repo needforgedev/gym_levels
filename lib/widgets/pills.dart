@@ -1,6 +1,99 @@
 import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
 
+/// Visual variants for [AppPill]. Matches the `variants` map in
+/// `design/v2/shared.jsx`'s `Pill` component (violet, amber, teal, streak,
+/// ghost). Use [AppPill] for chip-row labels — "Upper Body", "~60 min",
+/// muscle tags, etc.
+enum AppPillVariant { violet, amber, teal, streak, ghost }
+
+class AppPill extends StatelessWidget {
+  const AppPill({
+    super.key,
+    required this.label,
+    this.variant = AppPillVariant.violet,
+    this.icon,
+    this.dense = false,
+  });
+
+  final String label;
+  final AppPillVariant variant;
+  final IconData? icon;
+
+  /// Slightly tighter padding + smaller text used inside packed chip rows
+  /// (e.g. the muscle tags under the Next Workout card).
+  final bool dense;
+
+  ({Color bg, Color border, Color fg}) _spec() {
+    switch (variant) {
+      case AppPillVariant.violet:
+        return (
+          bg: AppPalette.purple.withValues(alpha: 0.18),
+          border: AppPalette.purple.withValues(alpha: 0.40),
+          fg: const Color(0xFFC4B5FD),
+        );
+      case AppPillVariant.amber:
+        return (
+          bg: AppPalette.amber.withValues(alpha: 0.15),
+          border: AppPalette.amber.withValues(alpha: 0.40),
+          fg: AppPalette.amberSoft,
+        );
+      case AppPillVariant.teal:
+        return (
+          bg: AppPalette.teal.withValues(alpha: 0.12),
+          border: AppPalette.teal.withValues(alpha: 0.40),
+          fg: AppPalette.teal,
+        );
+      case AppPillVariant.streak:
+        return (
+          bg: AppPalette.streak.withValues(alpha: 0.15),
+          border: AppPalette.streak.withValues(alpha: 0.40),
+          fg: AppPalette.streak,
+        );
+      case AppPillVariant.ghost:
+        return (
+          bg: AppPalette.purple.withValues(alpha: 0.08),
+          border: AppPalette.purple.withValues(alpha: 0.20),
+          fg: AppPalette.purpleSoft,
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _spec();
+    final hPad = dense ? 8.0 : 12.0;
+    final vPad = dense ? 3.0 : 6.0;
+    final fontSize = dense ? 10.0 : 12.0;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+      decoration: BoxDecoration(
+        color: s.bg,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: s.border, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: s.fg, size: fontSize + 2),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+              color: s.fg,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
   const _Pill({
     required this.color,

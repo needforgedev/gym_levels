@@ -6,10 +6,8 @@ import '../data/services/player_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
-import '../widgets/segmented_toggle.dart';
 
 /// PRD §8 Section 1 Screen 5 — height slider + CM/FT-IN toggle.
 class HeightScreen extends StatefulWidget {
@@ -49,73 +47,77 @@ class _HeightScreenState extends State<HeightScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.registration,
-      percent: 10,
-      kicker: 'PLAYER REGISTRATION',
-      subtitle: '…measuring frame.',
+      percent: 18,
+      subtitle: 'Measuring spatial dimensions…',
+      title: 'Height measurement:',
       onBack: () => context.go('/age'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.teal,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Height\nmeasurement',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
-            ),
-            const SizedBox(height: AppSpace.s5),
-            SegmentedToggle<String>(
-              options: const [
-                SegmentOption(value: 'cm', label: 'CM'),
-                SegmentOption(value: 'ft-in', label: 'FT / IN'),
-              ],
-              value: _unit,
-              onChanged: (v) => setState(() => _unit = v),
-            ),
-            const SizedBox(height: AppSpace.s6),
-            if (_unit == 'cm')
-              BigSlider(
-                value: _cm,
-                min: 130,
-                max: 220,
-                divisions: 90,
-                unit: 'cm',
-                themeColor: AppPalette.teal,
-                onChanged: (v) => setState(() => _cm = v),
-              )
-            else
-              Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Pill-style unit toggle (matches design's CM / FT-IN switch).
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                color: AppPalette.purple.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppPalette.purple.withValues(alpha: 0.20),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Center(
-                    child: Text(
-                      _imperialLabel(),
-                      style: AppType.monoXL(color: AppPalette.teal).copyWith(
-                        fontSize: 72,
-                        height: 1,
-                        shadows: [
-                          Shadow(
-                            color: AppPalette.teal.withValues(alpha: 0.5),
-                            blurRadius: 12,
+                  for (final (key, label) in const [
+                    ('cm', 'CM'),
+                    ('ft-in', 'FT/IN'),
+                  ])
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => setState(() => _unit = key),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
                           ),
-                        ],
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            color: _unit == key
+                                ? AppPalette.amber.withValues(alpha: 0.25)
+                                : Colors.transparent,
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                              color: _unit == key
+                                  ? AppPalette.amber
+                                  : AppPalette.textMuted,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppSpace.s5),
-                  Slider(
-                    value: _cm.clamp(130, 220),
-                    min: 130,
-                    max: 220,
-                    divisions: 90,
-                    activeColor: AppPalette.teal,
-                    inactiveColor: AppPalette.slate,
-                    onChanged: (v) => setState(() => _cm = v),
-                  ),
                 ],
               ),
-          ],
-        ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          BigSlider(
+            value: _cm,
+            min: 140,
+            max: 220,
+            divisions: 80,
+            unit: _unit == 'cm' ? 'cm' : _imperialLabel(),
+            onChanged: (v) => setState(() => _cm = v),
+          ),
+        ],
       ),
     );
   }

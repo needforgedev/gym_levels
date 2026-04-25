@@ -8,36 +8,48 @@ class AppPalette {
 
   // Backgrounds
   static const obsidian = Color(0xFF05090C);
-  static const voidBg = Color(0xFF0A0612);
+  static const voidBg = Color(0xFF0A0612); // page bg per design v2
+  static const bgPage = Color(0xFF07050F); // outer page wash (design v2)
   static const carbon = Color(0xFF0C131A);
   static const slate = Color(0xFF111923);
+  static const bgCard = Color(0xFF120A1F); // primary card surface (design v2)
+  static const bgCard2 = Color(0xFF1A0F2B); // raised card surface (design v2)
 
   // Accents
   static const teal = Color(0xFF19E3E3);
   static const tealDim = Color(0xFF0F7A7A);
   static const purple = Color(0xFF8B5CF6);
+  static const purpleSoft = Color(0xFFA78BFA); // hover / soft text on dark
+  static const purpleDeep = Color(0xFF5B21B6); // deep gradient stop
   static const purpleDim = Color(0xFF4C2D99);
   static const yellow = Color(0xFFF5D742);
   static const yellowDim = Color(0xFF8A7614);
   static const green = Color(0xFF22E06B);
   static const greenDim = Color(0xFF126B34);
-  static const white = Color(0xFFE6EEF5);
+  static const white = Color(0xFFECE9F5);
 
   // Signal
-  static const xpGold = Color(0xFFF5A623);
+  static const xpGold = Color(0xFFF5A623); // == amber in design v2
+  static const amber = Color(0xFFF5A623);
+  static const amberSoft = Color(0xFFFBBF24);
   static const flame = Color(0xFFFF6B35);
+  static const streak = Color(0xFFFF6B35); // alias for clarity
   static const success = Color(0xFF22E06B);
   static const danger = Color(0xFFE04444);
 
   // Text
-  static const textPrimary = Color(0xFFE6EEF5);
-  static const textSecondary = Color(0xFF9BA8B4);
-  static const textMuted = Color(0xFF6B7785);
+  static const textPrimary = Color(0xFFECE9F5); // design v2 text
+  static const textSecondary = Color(0xFFA8A0BA);
+  static const textMuted = Color(0xFF8A809B); // design v2 muted
+  static const textDim = Color(0xFF5A5169); // design v2 dim
   static const textDisabled = Color(0xFF3A4450);
 
   // Strokes
   static const strokeHairline = Color(0x14E6EEF5); // 0.08 alpha of #E6EEF5
   static const strokeSubtle = Color(0x24E6EEF5); // 0.14 alpha
+  // Design-v2 violet borders used on every card.
+  static const borderViolet = Color(0x2E8B5CF6); // ~0.18 alpha
+  static const borderVioletGlow = Color(0x738B5CF6); // ~0.45 alpha
 
   // Rank ladder colors
   static const bronzeA = Color(0xFFC47A3D);
@@ -83,19 +95,27 @@ class AppRadius {
   static const double pill = 999;
 }
 
-/// Typography (Rajdhani / Inter / JetBrains Mono).
+/// Typography (Bebas Neue / Inter / JetBrains Mono).
+///
+/// Display copy is set in **Bebas Neue** per the design-v2 handoff
+/// (`design/v2/index.html` — `.display-font` rule). Bebas Neue is a single
+/// weight (regular) condensed display face — `letterSpacing` carries the
+/// "weight" feel. Body type is Inter; numeric readouts use JetBrains Mono.
 class AppType {
   AppType._();
 
-  static TextStyle _rajdhani({
+  /// Display face (Bebas Neue). The font is single-weight; weight params
+  /// passed in are honored by GoogleFonts but in practice the rendered
+  /// glyph is always the regular cut — letterSpacing + size do the work.
+  static TextStyle _bebas({
     required double size,
     required double line,
-    FontWeight weight = FontWeight.w600,
+    FontWeight weight = FontWeight.w400,
     double letterSpacing = 0,
     bool italic = false,
     Color? color,
   }) {
-    return GoogleFonts.rajdhani(
+    return GoogleFonts.bebasNeue(
       fontSize: size,
       height: line / size,
       fontWeight: weight,
@@ -104,6 +124,7 @@ class AppType {
       color: color,
     );
   }
+
 
   static TextStyle _inter({
     required double size,
@@ -135,32 +156,28 @@ class AppType {
     );
   }
 
-  // Display (Rajdhani, uppercase applied at the Text widget)
-  static TextStyle displayXL({Color? color}) => _rajdhani(
+  // Display (Bebas Neue — condensed all-caps display face per design v2)
+  static TextStyle displayXL({Color? color}) => _bebas(
         size: 40,
         line: 44,
-        weight: FontWeight.w700,
-        letterSpacing: -0.5,
+        letterSpacing: 1.6, // ~0.04em at 40px
         color: color,
       );
-  static TextStyle displayLG({Color? color}) => _rajdhani(
+  static TextStyle displayLG({Color? color}) => _bebas(
         size: 32,
         line: 36,
-        weight: FontWeight.w700,
-        letterSpacing: -0.25,
+        letterSpacing: 1.3,
         color: color,
       );
-  static TextStyle displayMD({Color? color}) => _rajdhani(
+  static TextStyle displayMD({Color? color}) => _bebas(
         size: 24,
         line: 28,
-        weight: FontWeight.w600,
-        letterSpacing: 0.5,
+        letterSpacing: 1.0,
         color: color,
       );
-  static TextStyle displaySM({Color? color}) => _rajdhani(
+  static TextStyle displaySM({Color? color}) => _bebas(
         size: 18,
         line: 22,
-        weight: FontWeight.w600,
         letterSpacing: 1.5,
         color: color,
       );
@@ -188,12 +205,13 @@ class AppType {
   static TextStyle monoMD({Color? color}) =>
       _mono(size: 15, line: 20, weight: FontWeight.w500, color: color);
 
-  // Italic "System voice" subtitle
-  static TextStyle system({Color? color}) => _rajdhani(
-        size: 13,
-        line: 18,
-        weight: FontWeight.w500,
-        italic: true,
+  // Italic "System voice" subtitle — used for the in-fiction
+  // `[System] …` rationale lines per the design v2 chat transcript.
+  static TextStyle system({Color? color}) => GoogleFonts.inter(
+        fontSize: 12,
+        height: 18 / 12,
+        fontWeight: FontWeight.w400,
+        fontStyle: FontStyle.italic,
         color: color,
       );
 }

@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../data/services/goals_service.dart';
 import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/placeholder_block.dart';
 import '../widgets/progress_header.dart';
@@ -47,48 +46,29 @@ class _BodyTypeScreenState extends State<BodyTypeScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.objectives,
-      percent: 15,
-      kicker: 'MISSION OBJECTIVES',
-      subtitle: '…locking target silhouette.',
+      percent: 24,
+      subtitle: 'Locking target silhouette…',
+      title: 'Which body type represents your goal?',
       nextEnabled: _value != null,
       onBack: () => context.go('/calibrating/1'),
       onNext: _save,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          NeonCard(
-            glow: GlowColor.purple,
-            padding: const EdgeInsets.all(AppSpace.s6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Which body type\nrepresents your goal?',
-                  style: AppType.displayMD(color: AppPalette.textPrimary),
-                ),
-                const SizedBox(height: AppSpace.s5),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  mainAxisSpacing: AppSpace.s3,
-                  crossAxisSpacing: AppSpace.s3,
-                  childAspectRatio: 0.75,
-                  children: _options
-                      .map(
-                        (o) => _BodyCard(
-                          key: ValueKey(o.$1),
-                          label: o.$2,
-                          selected: _value == o.$1,
-                          onTap: () => setState(() => _value = o.$1),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.78,
+        children: _options
+            .map(
+              (o) => _BodyCard(
+                key: ValueKey(o.$1),
+                label: o.$2,
+                selected: _value == o.$1,
+                onTap: () => setState(() => _value = o.$1),
+              ),
+            )
+            .toList(),
       ),
     );
   }

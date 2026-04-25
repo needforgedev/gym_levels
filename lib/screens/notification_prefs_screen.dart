@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../data/models/notification_prefs.dart';
 import '../data/services/notification_prefs_service.dart';
 import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -53,50 +52,41 @@ class _NotificationPrefsScreenState extends State<NotificationPrefsScreen> {
   Widget build(BuildContext context) {
     return OnboardingScaffold(
       section: OnboardingSection.settings,
-      percent: 87,
-      kicker: 'SYSTEM SETTINGS',
-      subtitle: '…configuring broadcast channels.',
+      percent: 100,
+      subtitle: 'Configuring broadcast channels…',
+      title: 'Which alerts do you want?',
       onBack: () => context.go('/calibrating/5'),
       onNext: _save,
-      child: NeonCard(
-        glow: GlowColor.none,
-        padding: const EdgeInsets.all(AppSpace.s6),
-        pulse: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Which alerts do\nyou want?',
-              style: AppType.displayLG(color: AppPalette.textPrimary),
-            ),
-            const SizedBox(height: AppSpace.s5),
-            _PrefRow(
-              label: 'WORKOUT REMINDERS',
-              subtitle: 'Nudge ~1h before your typical log time',
-              value: _workoutReminders,
-              onChanged: (v) => setState(() => _workoutReminders = v),
-            ),
-            const SizedBox(height: AppSpace.s3),
-            _PrefRow(
-              label: 'STREAK WARNINGS',
-              subtitle: '7pm local on a scheduled day with no log',
-              value: _streakWarnings,
-              onChanged: (v) => setState(() => _streakWarnings = v),
-            ),
-            const SizedBox(height: AppSpace.s3),
-            _PrefRow(
-              label: 'WEEKLY PROGRESS REPORTS',
-              subtitle: 'Sunday 8pm recap of rank moves + PRs',
-              value: _weeklyReports,
-              onChanged: (v) => setState(() => _weeklyReports = v),
-            ),
-            const SizedBox(height: AppSpace.s4),
-            Text(
-              '> all notifications are local · no server push.',
-              style: AppType.system(color: AppPalette.textMuted),
-            ),
-          ],
-        ),
+      continueLabel: 'FINISH',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PrefRow(
+            label: 'Workout reminders',
+            subtitle: 'Nudge ~1h before your typical log time',
+            value: _workoutReminders,
+            onChanged: (v) => setState(() => _workoutReminders = v),
+          ),
+          const SizedBox(height: 10),
+          _PrefRow(
+            label: 'Streak warnings',
+            subtitle: '7pm local on a scheduled day with no log',
+            value: _streakWarnings,
+            onChanged: (v) => setState(() => _streakWarnings = v),
+          ),
+          const SizedBox(height: 10),
+          _PrefRow(
+            label: 'Weekly progress reports',
+            subtitle: 'Sunday 8pm recap of rank moves + PRs',
+            value: _weeklyReports,
+            onChanged: (v) => setState(() => _weeklyReports = v),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'All notifications are local · no server push.',
+            style: AppType.system(color: AppPalette.textMuted),
+          ),
+        ],
       ),
     );
   }
@@ -120,9 +110,16 @@ class _PrefRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpace.s4),
       decoration: BoxDecoration(
-        color: AppPalette.slate,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppPalette.strokeSubtle),
+        color: value
+            ? AppPalette.amber.withValues(alpha: 0.06)
+            : AppPalette.bgCard.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: value
+              ? AppPalette.amber.withValues(alpha: 0.40)
+              : AppPalette.purple.withValues(alpha: 0.18),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -130,11 +127,21 @@ class _PrefRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: AppType.label(color: AppPalette.textPrimary)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppPalette.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: AppType.bodySM(color: AppPalette.textMuted),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppPalette.textMuted,
+                  ),
                 ),
               ],
             ),
@@ -143,10 +150,10 @@ class _PrefRow extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: AppPalette.obsidian,
-            activeTrackColor: AppPalette.teal,
+            activeThumbColor: AppPalette.voidBg,
+            activeTrackColor: AppPalette.amber,
             inactiveThumbColor: AppPalette.textMuted,
-            inactiveTrackColor: AppPalette.slate,
+            inactiveTrackColor: AppPalette.purple.withValues(alpha: 0.15),
           ),
         ],
       ),

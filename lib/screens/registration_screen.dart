@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/onboarding_scaffold.dart';
 import '../widgets/progress_header.dart';
 
@@ -54,67 +53,75 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.registration,
       percent: 10,
-      kicker: 'PLAYER REGISTRATION',
-      subtitle: '…assigning callsign to new recruit.',
+      subtitle: 'Scanning biological signature…',
+      title: 'What shall the System call you, Player?',
       nextEnabled: _valid,
       onBack: () => context.go('/hype/progression'),
       onNext: _onSubmit,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          NeonCard(
-            glow: GlowColor.teal,
-            padding: const EdgeInsets.all(AppSpace.s6),
+          _NameField(
+            controller: _ctl,
+            focusNode: _focus,
+            onChanged: (v) => setState(() => _value = v),
+            onSubmitted: (_) => _onSubmit(),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: AppPalette.purple.withValues(alpha: 0.06),
+              border: Border.all(
+                color: AppPalette.purple.withValues(alpha: 0.15),
+                width: 1,
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'What shall the\nSystem call you,\nPlayer?',
-                  style: AppType.displayLG(color: AppPalette.textPrimary),
+                  '[SYS NOTE]',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppPalette.amber,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'JetBrainsMono',
+                  ),
                 ),
-                const SizedBox(height: AppSpace.s3),
-                Text(
-                  'THIS IS YOUR DISPLAY NAME. 2–20 CHARACTERS.',
-                  style: AppType.bodySM(color: AppPalette.textMuted),
-                ),
-                const SizedBox(height: AppSpace.s6),
-                _NameField(
-                  controller: _ctl,
-                  focusNode: _focus,
-                  onChanged: (v) => setState(() => _value = v),
-                  onSubmitted: (_) => _onSubmit(),
-                ),
-                const SizedBox(height: AppSpace.s3),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _hintFor(_value),
-                      style: AppType.system(
-                        color: _valid || _value.isEmpty
-                            ? AppPalette.textMuted
-                            : AppPalette.danger,
-                      ),
-                    ),
-                    Text(
-                      '${_value.length} / 20',
-                      style: AppType.monoMD(color: AppPalette.textMuted)
-                          .copyWith(fontSize: 12),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                const Text(
+                  'Your codename appears on the leaderboard, in notifications, and on your Player profile.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppPalette.textMuted,
+                    fontStyle: FontStyle.italic,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpace.s4),
-          NeonCard(
-            glow: GlowColor.none,
-            padding: const EdgeInsets.all(AppSpace.s4),
-            pulse: false,
-            child: Text(
-              '> identity packet will be bound to local player profile.',
-              style: AppType.system(color: AppPalette.textSecondary),
-            ),
+          const SizedBox(height: AppSpace.s3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _hintFor(_value),
+                style: AppType.system(
+                  color: _valid || _value.isEmpty
+                      ? AppPalette.textMuted
+                      : AppPalette.danger,
+                ),
+              ),
+              Text(
+                '${_value.length} / 20',
+                style: AppType.monoMD(color: AppPalette.textMuted)
+                    .copyWith(fontSize: 11),
+              ),
+            ],
           ),
         ],
       ),
@@ -170,56 +177,59 @@ class _NameFieldState extends State<_NameField> {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      height: 56,
+      height: 60,
       decoration: BoxDecoration(
-        color: AppPalette.slate,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        color: AppPalette.purple.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: _focused ? AppPalette.teal : AppPalette.strokeSubtle,
-          width: 1,
+          color: _focused
+              ? AppPalette.amber.withValues(alpha: 0.55)
+              : AppPalette.purple.withValues(alpha: 0.40),
+          width: 1.5,
         ),
         boxShadow: _focused
-            ? AppGlow.shadow(GlowColor.teal, intensity: 0.8, alpha: 0.4)
+            ? [
+                BoxShadow(
+                  color: AppPalette.amber.withValues(alpha: 0.30),
+                  blurRadius: 16,
+                  spreadRadius: -4,
+                ),
+              ]
             : const [],
       ),
       child: Material(
         type: MaterialType.transparency,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text(
-                '>',
-                style: AppType.monoLG(color: AppPalette.teal).copyWith(
-                  fontSize: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: widget.controller,
-                  focusNode: widget.focusNode,
-                  onChanged: widget.onChanged,
-                  onSubmitted: widget.onSubmitted,
-                  maxLength: 20,
-                  textInputAction: TextInputAction.done,
-                  textCapitalization: TextCapitalization.words,
-                  cursorColor: AppPalette.teal,
-                  style: AppType.bodyLG(color: AppPalette.textPrimary),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.deny(RegExp(r'[\n\t]')),
-                  ],
-                  decoration: InputDecoration(
-                    hintText: 'ENTER NAME…',
-                    hintStyle: AppType.bodyLG(color: AppPalette.textMuted),
-                    border: InputBorder.none,
-                    isCollapsed: true,
-                    counterText: '',
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: TextField(
+            controller: widget.controller,
+            focusNode: widget.focusNode,
+            onChanged: widget.onChanged,
+            onSubmitted: widget.onSubmitted,
+            maxLength: 20,
+            textInputAction: TextInputAction.done,
+            textCapitalization: TextCapitalization.words,
+            cursorColor: AppPalette.amber,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppPalette.textPrimary,
+            ),
+            inputFormatters: [
+              FilteringTextInputFormatter.deny(RegExp(r'[\n\t]')),
             ],
+            decoration: InputDecoration(
+              hintText: 'Enter codename',
+              hintStyle: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: AppPalette.textMuted,
+              ),
+              border: InputBorder.none,
+              isCollapsed: true,
+              counterText: '',
+              contentPadding: EdgeInsets.zero,
+            ),
           ),
         ),
       ),
