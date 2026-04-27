@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 
 import '../data/models/player.dart';
+import '../data/models/player_class_row.dart';
+import '../data/services/player_class_service.dart';
 import '../data/services/player_service.dart';
 import '../data/services/streak_service.dart';
 import '../data/services/workout_service.dart';
+import '../game/class_catalog.dart';
 import '../game/xp_engine.dart';
 
 /// Thin cache over the data services. Populated once from `main.dart` via
@@ -15,6 +18,7 @@ import '../game/xp_engine.dart';
 /// else that used to be a demo scalar is now real.
 class PlayerState extends ChangeNotifier {
   Player? _player;
+  PlayerClassRow? _classRow;
   int _totalXp = 0;
   int _level = 1;
   int _xpCurrent = 0;
@@ -25,6 +29,12 @@ class PlayerState extends ChangeNotifier {
   bool get hasPlayer => _player != null;
   bool get isOnboarded => _player?.isOnboarded ?? false;
   String get playerName => _player?.displayName ?? 'Player';
+
+  /// Resolved class definition (display name, descriptor, buffs, evolutions).
+  /// Falls back to the catalog default until [refresh] runs or until the
+  /// `player_class` row is seeded.
+  ClassDef get playerClass => classFor(_classRow?.classKey);
+  PlayerClassRow? get playerClassRow => _classRow;
 
   int get level => _level;
   int get xpCurrent => _xpCurrent;
@@ -44,8 +54,17 @@ class PlayerState extends ChangeNotifier {
     final totalXp = await WorkoutService.totalXp();
     final snapshot = XpEngine.resolve(totalXp);
     final streak = await StreakService.get();
+    var classRow = await PlayerClassService.get();
+
+    // First-run: seed the default class so the Profile / Home class card
+    // never has to render a "?" — full derivation matrix lands with §9A.7.
+    if (classRow == null && player?.isOnboarded == true) {
+      await PlayerClassService.assign(defaultClassKey);
+      classRow = await PlayerClassService.get();
+    }
 
     _player = player;
+    _classRow = classRow;
     _totalXp = totalXp;
     _level = snapshot.level;
     _xpCurrent = snapshot.xpInLevel;

@@ -120,7 +120,11 @@ class _HomeScreenState extends State<HomeScreen> {
           InAppShell.tabBarSafeBottom + safeBottom,
         ),
         children: [
-          _TopBar(name: s.playerName, onAvatar: () => context.go('/profile')),
+          _TopBar(
+            name: s.playerName,
+            className: s.playerClass.displayName,
+            onAvatar: () => context.go('/profile'),
+          ),
           _LevelXpStrip(level: s.level, totalXp: s.totalXp),
           _XpProgressBlock(
             level: s.level,
@@ -155,16 +159,14 @@ class _HomeSession {
 
 // ─── Top bar (greeting + name + class + avatar) ────────────
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.name, required this.onAvatar});
+  const _TopBar({
+    required this.name,
+    required this.className,
+    required this.onAvatar,
+  });
   final String name;
+  final String className;
   final VoidCallback onAvatar;
-
-  String _classFor(BuildContext context) {
-    // Until the player_class_service is wired into PlayerState, hardcode
-    // the design v2 sample-data class label. Switch to `s.playerClass`
-    // once that's threaded.
-    return 'MASS BUILDER';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -207,7 +209,7 @@ class _TopBar extends StatelessWidget {
                     colors: [AppPalette.amber, AppPalette.amberSoft],
                   ).createShader(rect),
                   child: Text(
-                    'CLASS • ${_classFor(context)}',
+                    'CLASS • $className',
                     style: AppType.displaySM(color: Colors.white).copyWith(
                       fontSize: 14,
                       letterSpacing: 2,

@@ -9,6 +9,7 @@ import '../data/services/workout_service.dart';
 import '../state/onboarding_flag.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
+import '../widgets/class_sheet.dart';
 import '../widgets/in_app_shell.dart';
 import '../widgets/progress_bar.dart';
 import '../widgets/tab_bar.dart';
@@ -136,9 +137,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _HeaderCard(state: s),
               ),
               // Player Class card.
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                child: _PlayerClassCard(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: _PlayerClassCard(
+                  className: s.playerClass.displayName,
+                  descriptor: s.playerClass.descriptor,
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    isScrollControlled: true,
+                    builder: (_) => PlayerClassSheet(
+                      classDef: s.playerClass,
+                    ),
+                  ),
+                ),
               ),
               // Body Stats.
               Padding(
@@ -335,35 +347,48 @@ class _HeaderCard extends StatelessWidget {
 
 // ─── Player Class card (amber-bordered) ────────────────────
 class _PlayerClassCard extends StatelessWidget {
-  const _PlayerClassCard();
+  const _PlayerClassCard({
+    required this.className,
+    required this.descriptor,
+    this.onTap,
+  });
+
+  final String className;
+  final String descriptor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppPalette.amber.withValues(alpha: 0.15),
-            AppPalette.purple.withValues(alpha: 0.10),
-          ],
-        ),
-        border: Border.all(
-          color: AppPalette.amber.withValues(alpha: 0.45),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppPalette.amber.withValues(alpha: 0.25),
-            blurRadius: 24,
-            spreadRadius: -4,
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppPalette.amber.withValues(alpha: 0.15),
+                AppPalette.purple.withValues(alpha: 0.10),
+              ],
+            ),
+            border: Border.all(
+              color: AppPalette.amber.withValues(alpha: 0.45),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppPalette.amber.withValues(alpha: 0.25),
+                blurRadius: 24,
+                spreadRadius: -4,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
+          child: Row(
         children: [
           Container(
             width: 76,
@@ -411,7 +436,7 @@ class _PlayerClassCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'MASS BUILDER',
+                  className,
                   style: TextStyle(
                     fontSize: 24,
                     fontFamily: 'BebasNeue',
@@ -427,9 +452,9 @@ class _PlayerClassCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Building size through volume and dedication.',
-                  style: TextStyle(
+                Text(
+                  descriptor,
+                  style: const TextStyle(
                     fontSize: 11,
                     color: AppPalette.textMuted,
                   ),
@@ -437,8 +462,10 @@ class _PlayerClassCard extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, size: 18, color: AppPalette.textMuted),
-        ],
+              Icon(Icons.chevron_right, size: 18, color: AppPalette.textMuted),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -500,7 +527,7 @@ class _BodyStatsSection extends StatelessWidget {
                 label: 'Weight',
                 value: weight,
                 icon: Icons.scale,
-                onTap: () => GoRouter.of(context).go('/weight'),
+                onTap: () => GoRouter.of(context).go('/weight-tracker'),
               ),
             ],
           ),
@@ -614,7 +641,7 @@ class _MenuList extends StatelessWidget {
           _MenuRow(
             label: 'Muscle Rankings',
             icon: Icons.emoji_events_outlined,
-            onTap: () {},
+            onTap: () => GoRouter.of(context).go('/ranks'),
           ),
           _MenuRow(
             label: 'Edit Onboarding',

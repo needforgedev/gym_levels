@@ -261,7 +261,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     } else if (summary.streakMilestoneReached) {
       context.go('/streak-milestone');
     } else if (fallbackRoute.startsWith('/workouts/')) {
-      context.go(fallbackRoute, extra: summary);
+      // Route through the celebratory summary screen instead of jumping
+      // straight to the detail view.
+      context.go('/workout-complete/$_workoutId', extra: summary);
     } else {
       context.go(fallbackRoute);
     }

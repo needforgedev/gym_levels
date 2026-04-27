@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/models/quest.dart' as model;
 import '../data/services/quest_service.dart';
@@ -269,6 +270,12 @@ class _DbQuestList extends StatelessWidget {
                 desc: _descFor(q.description),
                 phase: q.type == 'boss' ? QuestEngine.bossPhase(q) : null,
                 accent: accent,
+                onTap: q.type == 'boss'
+                    ? () => GoRouter.of(context).go(
+                          '/boss-detail',
+                          extra: q,
+                        )
+                    : null,
               ),
               const SizedBox(height: 10),
             ],
@@ -635,6 +642,7 @@ class _QuestCard extends StatelessWidget {
     required this.desc,
     required this.accent,
     this.phase,
+    this.onTap,
   });
 
   final model.Quest quest;
@@ -646,6 +654,9 @@ class _QuestCard extends StatelessWidget {
   /// Boss-only — the engine derives this from the issued-at timestamp via
   /// [QuestEngine.bossPhase].
   final String? phase;
+
+  /// Tap-to-drill-down. Boss tiles wire this to push `/boss-detail`.
+  final VoidCallback? onTap;
 
   String _formatNum(int n) {
     final s = n.toString();
@@ -672,7 +683,7 @@ class _QuestCard extends StatelessWidget {
     final progressText =
         '${_formatNum(progress)}$unitSuffix / ${_formatNum(target)}$unitSuffix';
     final icon = meta.icon;
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -862,6 +873,15 @@ class _QuestCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
       ),
     );
   }

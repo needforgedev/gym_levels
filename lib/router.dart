@@ -20,6 +20,7 @@ import 'screens/profile_screen.dart';
 import 'screens/progression_hype_screen.dart';
 import 'screens/quests_screen.dart';
 import 'screens/ranks_hype_screen.dart';
+import 'screens/ranks_screen.dart';
 import 'screens/registration_screen.dart';
 import 'screens/reward_style_screen.dart';
 import 'screens/session_minutes_screen.dart';
@@ -32,10 +33,13 @@ import 'screens/training_days_screen.dart';
 import 'screens/training_styles_screen.dart';
 import 'screens/weight_direction_screen.dart';
 import 'screens/weight_screen.dart';
+import 'screens/weight_tracker_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'screens/workout_complete_screen.dart';
 import 'screens/workout_detail_screen.dart';
 import 'screens/workout_history_screen.dart';
 import 'screens/workout_screen.dart';
+import 'data/models/quest.dart';
 import 'game/game_handlers.dart';
 
 /// Full PRD §8 onboarding flow:
@@ -218,8 +222,24 @@ final appRouter = GoRouter(
             : null,
       ),
     ),
+    GoRoute(
+      path: '/workout-complete/:id',
+      builder: (ctx, state) => WorkoutCompleteScreen(
+        workoutId: int.parse(state.pathParameters['id']!),
+        summary: state.extra is SessionSummary
+            ? state.extra as SessionSummary
+            : null,
+      ),
+    ),
+    GoRoute(path: '/weight-tracker', builder: (_, _) => const WeightTrackerScreen()),
+    GoRoute(path: '/ranks', builder: (_, _) => const RanksScreen()),
     GoRoute(path: '/quests', builder: (_, _) => const QuestsScreen()),
-    GoRoute(path: '/boss-detail', builder: (_, _) => const BossDetailScreen()),
+    GoRoute(
+      path: '/boss-detail',
+      builder: (ctx, state) => BossDetailScreen(
+        quest: state.extra is Quest ? state.extra as Quest : null,
+      ),
+    ),
     GoRoute(path: '/streak', builder: (_, _) => const StreakScreen()),
     GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
     GoRoute(path: '/level-up', builder: (_, _) => const LevelUpScreen()),
