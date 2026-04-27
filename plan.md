@@ -3,7 +3,7 @@
 **Companion to:** [PRD_GamifiedFitnessApp.md](PRD_GamifiedFitnessApp.md) (v1.2)
 **Design system:** [DesignSystem_LevelUpIRL.md](DesignSystem_LevelUpIRL.md) (v1.0)
 **Stack:** Flutter / Dart, **offline-first**, SQLite via **raw `sqflite`** (no ORM, no codegen) as source of truth.
-**Last updated:** 2026-04-24
+**Last updated:** 2026-04-27
 
 This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow the roadmap in PRD §16. Each phase has explicit **exit criteria** — do not start the next phase until the current phase's exit criteria are met.
 
@@ -21,8 +21,8 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
 | **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.5k post-onboarding editing + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
-| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + multi-exercise sessions + §2.3 Today's Workout (profile chips + completed-today + priority-weighted plan) + §2.4 Profile real per-muscle ranks **done** ✓; remaining: 2.4 drill-down, 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
-| **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[ ]` not started |
+| **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + multi-exercise sessions + Workout Complete summary screen + §2.3 Today's Workout (profile chips + completed-today + priority-weighted plan) + §2.4 Profile real per-muscle ranks + dedicated `/ranks` drill-down **done** ✓; remaining: 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
+| **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[~]` §3.1 weekly pool + rotation + §3.2 boss pool seeding + Boss Detail drill-down + §3.7 Weight Tracker (incl. log modal) + §3.8 Player Class sheet (catalog-driven) **done** ✓; remaining: Pro-gating, boss-completion celebration, settings hub, data export/import, advanced analytics, accessibility pass, store submission |
 | **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
 
 ---
@@ -46,23 +46,28 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 - [x] Dark `ThemeData`
 
 ## 0.3 Reusable widgets — [lib/widgets/](lib/widgets/)
+
+**Cleanup pass (2026-04-27):** the v2 design rebuild made several Phase-0 widgets obsolete. They were authored for the prototype shell and ended up with zero importers once the post-onboarding screens were rebuilt to match the v2 design directly (logger has its own `_StepperRow`, Profile/Ranks have inline letter badges, etc.). Retired files marked below.
+
 - [x] `NeonCard` (pulsing glow, onTap, optional clip)
 - [x] `PrimaryButton`, `SecondaryButton`, `GhostButton`
 - [x] `ProgressHeader` (onboarding section header with bar)
 - [x] `Bar` (gradient progress bar, glow optional)
-- [x] `AppChip` + `AppChipGroup` (single/multi)
-- [x] `SegmentedToggle`
+- [—] ~~`AppChip` + `AppChipGroup`~~ — retired 2026-04-27 (zero importers; v2 screens use bespoke chip styles inline)
+- [—] ~~`SegmentedToggle`~~ — retired 2026-04-27 (zero importers)
 - [x] `LevelPill`, `XPPill`, `StreakPill`
-- [x] `RankBadge` (hex shield with gradient, animated optional)
+- [—] ~~`RankBadge`~~ — retired 2026-04-27 (replaced by inline letter-badges in `ranks_screen.dart`)
 - [x] `SystemHeader` (animated `● ● ● KICKER`)
-- [x] `NumericStepper` (narrow-column-safe with FittedBox)
-- [x] `XPRing` (CustomPaint arc)
-- [x] `XPToast` (rising + fading)
-- [x] `MuscleFigure` (body silhouette with highlight)
+- [—] ~~`NumericStepper`~~ — retired 2026-04-27 (logger has its own `_StepperRow`)
+- [—] ~~`XPRing`~~ — retired 2026-04-27 (zero importers; XP rendered as bar + chips in v2)
+- [—] ~~`XPToast`~~ — retired 2026-04-27 (zero importers; XP feedback inline on logger chip)
+- [—] ~~`MuscleFigure`~~ — retired 2026-04-27 (replaced by painted silhouettes in `ranks_screen.dart` + `workout_complete_screen.dart`)
+- [—] ~~`AmbientBackground`~~ — retired 2026-04-27 (zero importers; v2 backgrounds are gradient containers)
 - [x] `BigFlame` (gradient path)
 - [x] `PlaceholderBlock` (striped placeholder for key art)
 - [x] `AppTabBar` (amber active state)
 - [x] `QuestRow` (daily/weekly/boss variants)
+- [x] `PlayerClassSheet` ([lib/widgets/class_sheet.dart](lib/widgets/class_sheet.dart)) — bottom sheet driven by [lib/game/class_catalog.dart](lib/game/class_catalog.dart) (landed 2026-04-27)
 
 ## 0.4 Shell scaffolds
 - [x] `ScreenBase`
@@ -403,7 +408,7 @@ Persistence-only slice **already landed** in §1.9 so the app demos as a real tr
 - [x] PR detection on every COMPLETE SET — `SetsService.bestFor` compared against current-set volume, `is_pr` persisted on the `sets` row, PR adds the +25 XP bonus
 - [x] Active daily-quest progress updated on workout finish via [QuestEngine.onWorkoutFinished](lib/game/quest_engine.dart)
 - [x] Level-up / streak-milestone navigation on finish — logger checks `summary.leveledUp` / `summary.streakMilestoneReached` and routes to `/level-up` or `/streak-milestone` before the default detail screen
-- [ ] Session summary **modal** on finish: duration, volume, XP earned, sets completed, new PRs, rank changes — today the logger navigates to [WorkoutDetailScreen](lib/screens/workout_detail_screen.dart) instead of a modal; modal polish pass deferred
+- [x] Session summary screen on finish (landed 2026-04-27) — [lib/screens/workout_complete_screen.dart](lib/screens/workout_complete_screen.dart) renders Total Volume + Duration/Calories + per-muscle activation silhouettes + intensity chips + XP/PR banner, with a "View Full Breakdown" purple CTA opening a `_FullBreakdownSheet` `DraggableScrollableSheet` showing per-exercise set chips (`80×10`), volume, avg RPE, and `+XP`. Logger's `_finishAndGo` now lands on `/workout-complete/:id` (carrying `SessionSummary` via `extra`) before the detail view.
 - [ ] PR `[System]` in-app banner (PRD §14) — analytics seam exists; banner UI lands with §2.5 notifications
 - [x] `+ Add Set` wired up — **landed with §1.9**
 - [x] Multi-exercise session (landed 2026-04-24) — Today's Workout's START queues the remaining prescribed exercises via `?queue=<id>,<id>` query param. [WorkoutScreen](lib/screens/workout_screen.dart) advances through the queue under a single `workouts` row: header shows "EXERCISE 2 OF 3", a teal `NEXT EXERCISE →` button appears once the user logs at least one set on the current exercise, `_finishAndGo` aggregates volume + set-count from the DB across every exercise in the session so Finish finalizes the whole prescription, not just the last exercise. The existing Swap sheet (UI-only, §2.3) feeds into the queue.
@@ -432,10 +437,10 @@ Per PRD §9A.2. Surfaces [PlanGenerator.todaysSession()](lib/game/plan_generator
 ## 2.4 Muscle Rankings drill-down (new)
 Per PRD §9A.4.
 - [x] **Profile screen list is live** (landed 2026-04-24) — [lib/screens/profile_screen.dart](lib/screens/profile_screen.dart) loads `WorkoutService.totalFinished`, `StreakService.get`, and `MuscleRankService.getAll` in parallel. Player header shows real level / XP / display name. Stat tiles show real TOTAL XP (comma-formatted via `PlayerState.totalXp`), WORKOUTS, and BEST STREAK. Muscle list renders every tracked muscle with real tier + sub-rank via `RankEngine.assign` and a progress bar fed by new `RankEngine.progressInTier` helper. Untrained muscles default to Bronze I / 0%.
-- [ ] Dedicated drill-down routes `/profile/ranks` (list) + `/profile/ranks/:muscle` (detail) — the Profile list covers the list view; a dedicated page would add muscle-family filters + sorting.
-- [ ] Anime body with Lottie pulse rate proportional to rank
-- [ ] Overall rank badge + tier explainer sheet
-- [ ] Drill-down detail: rank progress bar, XP to next tier, PR history, recent volume chart
+- [x] Dedicated drill-down route `/ranks` (landed 2026-04-27) — [lib/screens/ranks_screen.dart](lib/screens/ranks_screen.dart) shows a violet-haloed body silhouette + amber `OVERALL RANK` badge (priority-weighted mean via `RankEngine.assign`) + per-muscle rows with letter badges (tier-coloured), name, progress bar, tier label, and XP. Wired from Profile's `Muscle Rankings` menu row. **Overall rank badge already integrated into the screen header.**
+- [ ] Per-muscle detail page `/ranks/:muscle` — PR history + recent volume chart + XP-to-next-tier breakdown. Phase 3 polish.
+- [ ] Anime body with Lottie pulse rate proportional to rank — deferred art pass
+- [ ] Tier explainer sheet — Phase 3 polish
 
 ## 2.5 Local notifications — `notifications_service.dart`
 PRD §14 — 100% local, zero APNs/FCM.
@@ -502,18 +507,19 @@ PRD §15.
 
 ## 3.1 Weekly quests
 PRD §9.4.
-- [ ] Pool: "Train 4 days", "Beat a PR", "Log RPE on every set", "Add 5kg on any lift", etc.
-- [ ] Reset Monday 00:00 local via `workmanager`
-- [ ] 200–500 XP range
-- [ ] Pro-gated (free tier sees locked state + paywall surface)
+- [x] Pool seeded in [lib/game/quest_engine.dart](lib/game/quest_engine.dart) `weeklyPool` (4 templates: Train 4 days, Beat a PR, 8 000 kg total volume, Log RPE on every set). Progress increments wired through `onWorkoutFinished`.
+- [x] Reset on Monday 00:00 local via `QuestEngine.rotateWeeklyIfNeeded()` — fires from the Quests screen mount; retires last week's leftovers + seeds fresh ones. Idempotent.
+- [x] 200–500 XP range (templates currently award 200–350)
+- [ ] Pro-gated (free tier sees locked state + paywall surface) — wait for §2.6 IAP
+- [ ] Background `workmanager` rotation (independent of screen mount) — bundle with §2.5 notifications
 
 ## 3.2 Boss quests
 PRD §9.4 + §9A detail.
-- [ ] Curated pool for MVP (e.g. "Deadlift bodyweight × 2", "Add 10% to bench e1RM in 6 weeks")
-- [ ] Multi-week objectives with 2000+ XP payout
-- [ ] Themed boss art bundled in `assets/art/`
-- [ ] Boss Detail screen (already built in Phase 0 — now wires to real progress)
-- [ ] On complete → Boss Completion celebration screen + permanent buff (e.g. "Iron Heart: +10% XP on compounds for 7 days")
+- [x] Curated pool seeded in [lib/game/quest_engine.dart](lib/game/quest_engine.dart) `bossPool` ("Deadlift Bodyweight × 2" → 160 kg / 6 wk / +2 500 XP; "Add 10% to Bench e1RM" → 99 kg / 6 wk / +2 000 XP). `seedBossesIfNeeded` only seeds when *no* boss row exists so completed bosses don't re-spawn.
+- [x] Multi-week objectives with 2000+ XP payouts — see pool entries above.
+- [x] Boss Detail screen wired to real data (landed 2026-04-27) — [lib/screens/boss_detail_screen.dart](lib/screens/boss_detail_screen.dart) takes a `Quest` via `state.extra` (or lazily loads the first active boss), renders title + descriptor + progress bar + `bossPhase` (`WEEK X / Y`) + days-left + objective row + reward card. Quests screen's boss tiles drill into `/boss-detail` via the new `_QuestCard.onTap`.
+- [ ] Themed boss art bundled in `assets/art/` — current detail screen uses gradient + iconography; commissioned art lands with the Phase 3 art pass.
+- [ ] On complete → Boss Completion celebration screen + permanent buff (e.g. "Iron Heart: +10% XP on compounds for 7 days") — celebration UI deferred
 
 ## 3.3 Celebration flows — wired to events (not demo nav)
 Phase 0 has the UI; now wire the triggers.
