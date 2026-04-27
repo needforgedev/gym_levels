@@ -67,7 +67,6 @@ class _BodyTypeScreenState extends State<BodyTypeScreen> {
           Center(
             child: _ScanFrame(
               label: _value == null ? 'AWAITING' : _selectedLabel(),
-              archetype: _value,
             ),
           ),
           const SizedBox(height: 20),
@@ -100,9 +99,8 @@ class _BodyTypeScreenState extends State<BodyTypeScreen> {
 /// Scan-frame container with green corner brackets, a top-left
 /// `[SCAN] {label}` chip, and a placeholder body silhouette inside.
 class _ScanFrame extends StatelessWidget {
-  const _ScanFrame({required this.label, required this.archetype});
+  const _ScanFrame({required this.label});
   final String label;
-  final String? archetype;
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +110,7 @@ class _ScanFrame extends StatelessWidget {
       height: 220,
       child: Stack(
         children: [
-          // Inner scan content (body silhouette + grid lines).
+          // Inner scan content (body image + faint grid).
           Positioned.fill(
             child: Container(
               margin: const EdgeInsets.all(8),
@@ -122,8 +120,18 @@ class _ScanFrame extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CustomPaint(
-                  painter: _BodySilhouettePainter(archetype: archetype),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CustomPaint(painter: _ScanGridPainter()),
+                    Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Image.asset(
+                        'assets/body-front.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -234,49 +242,14 @@ class _CornerBracketPainter extends CustomPainter {
       old.color != color;
 }
 
-class _BodySilhouettePainter extends CustomPainter {
-  _BodySilhouettePainter({required this.archetype});
-  final String? archetype;
-
-  // Width modifier per archetype — sells the "morphing" feel.
-  double get _widthScale {
-    switch (archetype) {
-      case 'lean':
-        return 0.85;
-      case 'muscular':
-        return 1.05;
-      case 'powerful':
-        return 1.15;
-      case 'balanced':
-        return 1.0;
-      default:
-        return 0.95;
-    }
-  }
-
-  Color get _tint {
-    switch (archetype) {
-      case 'lean':
-        return AppPalette.teal;
-      case 'muscular':
-        return AppPalette.purpleSoft;
-      case 'powerful':
-        return AppPalette.amber;
-      case 'balanced':
-        return const Color(0xFF22E06B);
-      default:
-        return AppPalette.purpleSoft;
-    }
-  }
-
+/// Faint green scan grid drawn behind the body image — preserves the
+/// `[SCAN] …` HUD aesthetic from the design.
+class _ScanGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final scale = _widthScale;
     final cx = w * 0.5;
-
-    // Subtle horizontal scan grid (faint green lines).
     final grid = Paint()
       ..color = const Color(0xFF22E06B).withValues(alpha: 0.10)
       ..strokeWidth = 1;
@@ -285,109 +258,10 @@ class _BodySilhouettePainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(w, y), grid);
     }
     canvas.drawLine(Offset(cx, 0), Offset(cx, h), grid);
-
-    // Body silhouette — head + shoulders + torso + legs.
-    final body = Paint()
-      ..color = AppPalette.purple.withValues(alpha: 0.45)
-      ..style = PaintingStyle.fill;
-
-    // Head.
-    canvas.drawCircle(Offset(cx, h * 0.16), w * 0.085, body);
-
-    // Torso (chest + waist) — slight hourglass.
-    final torso = Path()
-      ..moveTo(cx - w * 0.16 * scale, h * 0.27)
-      ..quadraticBezierTo(
-        cx - w * 0.20 * scale,
-        h * 0.32,
-        cx - w * 0.20 * scale,
-        h * 0.40,
-      )
-      ..quadraticBezierTo(
-        cx - w * 0.22 * scale,
-        h * 0.48,
-        cx - w * 0.16 * scale,
-        h * 0.55,
-      )
-      ..lineTo(cx - w * 0.10, h * 0.62)
-      ..lineTo(cx + w * 0.10, h * 0.62)
-      ..lineTo(cx + w * 0.16 * scale, h * 0.55)
-      ..quadraticBezierTo(
-        cx + w * 0.22 * scale,
-        h * 0.48,
-        cx + w * 0.20 * scale,
-        h * 0.40,
-      )
-      ..quadraticBezierTo(
-        cx + w * 0.20 * scale,
-        h * 0.32,
-        cx + w * 0.16 * scale,
-        h * 0.27,
-      )
-      ..close();
-    canvas.drawPath(torso, body);
-
-    // Pec highlight (tinted).
-    final tintPaint = Paint()..color = _tint.withValues(alpha: 0.55);
-    final pec = Path()
-      ..moveTo(cx - w * 0.14 * scale, h * 0.30)
-      ..quadraticBezierTo(
-        cx,
-        h * 0.34,
-        cx + w * 0.14 * scale,
-        h * 0.30,
-      )
-      ..quadraticBezierTo(
-        cx + w * 0.10 * scale,
-        h * 0.38,
-        cx,
-        h * 0.40,
-      )
-      ..quadraticBezierTo(
-        cx - w * 0.10 * scale,
-        h * 0.38,
-        cx - w * 0.14 * scale,
-        h * 0.30,
-      )
-      ..close();
-    canvas.drawPath(pec, tintPaint);
-
-    // Arms.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.30 * scale, h * 0.30, w * 0.10, h * 0.30),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.20 * scale, h * 0.30, w * 0.10, h * 0.30),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-
-    // Legs.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.13, h * 0.62, w * 0.11, h * 0.34),
-        const Radius.circular(6),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.02, h * 0.62, w * 0.11, h * 0.34),
-        const Radius.circular(6),
-      ),
-      body,
-    );
   }
 
   @override
-  bool shouldRepaint(covariant _BodySilhouettePainter old) =>
-      old.archetype != archetype;
+  bool shouldRepaint(covariant _ScanGridPainter old) => false;
 }
 
 /// Card with label + small description, amber gradient when selected.

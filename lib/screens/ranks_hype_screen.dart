@@ -277,7 +277,10 @@ class _Slide1 extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: CustomPaint(painter: _HeroFacePainter()),
+                    child: Image.asset(
+                      'assets/hero-character.png',
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 // Sparkle decoration top-right.
@@ -374,74 +377,6 @@ class _Slide1 extends StatelessWidget {
       ),
     );
   }
-}
-
-class _HeroFacePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // Background gradient is already drawn on the parent Container.
-    // Face oval.
-    final facePaint = Paint()..color = const Color(0xE6F0D5B8);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.5, h * 0.55),
-        width: w * 0.55,
-        height: h * 0.55,
-      ),
-      facePaint,
-    );
-
-    // Hair cap.
-    final hairPaint = Paint()..color = const Color(0xFF1A0F2B);
-    final hair = Path()
-      ..moveTo(w * 0.18, h * 0.42)
-      ..quadraticBezierTo(w * 0.18, h * 0.08, w * 0.5, h * 0.06)
-      ..quadraticBezierTo(w * 0.82, h * 0.08, w * 0.82, h * 0.42)
-      ..lineTo(w * 0.78, h * 0.36)
-      ..lineTo(w * 0.70, h * 0.45)
-      ..lineTo(w * 0.62, h * 0.38)
-      ..lineTo(w * 0.50, h * 0.45)
-      ..lineTo(w * 0.40, h * 0.38)
-      ..lineTo(w * 0.32, h * 0.45)
-      ..lineTo(w * 0.22, h * 0.36)
-      ..close();
-    canvas.drawPath(hair, hairPaint);
-
-    // Eyes.
-    final eyePaint = Paint()..color = AppPalette.purple;
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.40, h * 0.55),
-        width: w * 0.07,
-        height: h * 0.05,
-      ),
-      eyePaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.60, h * 0.55),
-        width: w * 0.07,
-        height: h * 0.05,
-      ),
-      eyePaint,
-    );
-
-    // Body / shoulders silhouette.
-    final bodyPaint = Paint()..color = const Color(0xFF1A0F2B);
-    final body = Path()
-      ..moveTo(0, h)
-      ..lineTo(0, h * 0.85)
-      ..quadraticBezierTo(w * 0.5, h * 0.70, w, h * 0.85)
-      ..lineTo(w, h)
-      ..close();
-    canvas.drawPath(body, bodyPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HeroFacePainter oldDelegate) => false;
 }
 
 // ─── Slide 2: LEVEL UP IRL with XP burst ──────────────────────────────

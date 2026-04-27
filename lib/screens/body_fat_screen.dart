@@ -111,7 +111,7 @@ class _BodyFatScreenState extends State<BodyFatScreen> {
           ),
           const SizedBox(height: 16),
           // Scan-frame body figure (similar to body-type screen).
-          Center(child: _BodyFatFrame(stop: _stop, tint: tint)),
+          const Center(child: _BodyFatFrame()),
           const SizedBox(height: 20),
           // Big amber readout.
           Center(
@@ -185,12 +185,11 @@ class _BodyFatScreenState extends State<BodyFatScreen> {
   }
 }
 
-/// Body figure inside a violet-bordered scan frame. The body's stance
-/// width and pec/quad tint shifts subtly with the selected stop.
+/// Body figure inside a violet-bordered scan frame. Uses
+/// [body-front.png] as the silhouette layer with a faint scan grid
+/// behind it for the HUD aesthetic.
 class _BodyFatFrame extends StatelessWidget {
-  const _BodyFatFrame({required this.stop, required this.tint});
-  final int stop;
-  final Color tint;
+  const _BodyFatFrame();
 
   @override
   Widget build(BuildContext context) {
@@ -208,43 +207,32 @@ class _BodyFatFrame extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: CustomPaint(
-          painter: _BodyFatBodyPainter(stop: stop, tint: tint),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(painter: _BodyFatGridPainter()),
+            Padding(
+              padding: const EdgeInsets.all(4),
+              child: Image.asset(
+                'assets/body-front.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _BodyFatBodyPainter extends CustomPainter {
-  _BodyFatBodyPainter({required this.stop, required this.tint});
-  final int stop;
-  final Color tint;
-
-  /// Width modifier per stop — leaner stops are narrower, heavier wider.
-  double get _waistScale {
-    switch (stop) {
-      case 0:
-        return 0.85; // very lean
-      case 1:
-        return 0.95;
-      case 2:
-        return 1.05;
-      case 3:
-        return 1.20;
-      default:
-        return 1.0;
-    }
-  }
-
+/// Faint violet grid drawn behind the body image in the body-fat
+/// scan frame.
+class _BodyFatGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
     final cx = w * 0.5;
-    final scale = _waistScale;
-
-    // Faint scan grid.
     final grid = Paint()
       ..color = AppPalette.purple.withValues(alpha: 0.12)
       ..strokeWidth = 1;
@@ -253,107 +241,8 @@ class _BodyFatBodyPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(w, y), grid);
     }
     canvas.drawLine(Offset(cx, 0), Offset(cx, h), grid);
-
-    // Body silhouette.
-    final body = Paint()
-      ..color = AppPalette.purple.withValues(alpha: 0.45)
-      ..style = PaintingStyle.fill;
-
-    // Head.
-    canvas.drawCircle(Offset(cx, h * 0.13), w * 0.075, body);
-
-    // Torso.
-    final torso = Path()
-      ..moveTo(cx - w * 0.15 * scale, h * 0.24)
-      ..quadraticBezierTo(
-        cx - w * 0.20 * scale,
-        h * 0.30,
-        cx - w * 0.20 * scale,
-        h * 0.40,
-      )
-      ..quadraticBezierTo(
-        cx - w * 0.22 * scale,
-        h * 0.50,
-        cx - w * 0.16 * scale,
-        h * 0.58,
-      )
-      ..lineTo(cx - w * 0.10, h * 0.65)
-      ..lineTo(cx + w * 0.10, h * 0.65)
-      ..lineTo(cx + w * 0.16 * scale, h * 0.58)
-      ..quadraticBezierTo(
-        cx + w * 0.22 * scale,
-        h * 0.50,
-        cx + w * 0.20 * scale,
-        h * 0.40,
-      )
-      ..quadraticBezierTo(
-        cx + w * 0.20 * scale,
-        h * 0.30,
-        cx + w * 0.15 * scale,
-        h * 0.24,
-      )
-      ..close();
-    canvas.drawPath(torso, body);
-
-    // Tinted pec / waist accent (visualises the selected stop).
-    final tintPaint = Paint()..color = tint.withValues(alpha: 0.55);
-    final pec = Path()
-      ..moveTo(cx - w * 0.13 * scale, h * 0.27)
-      ..quadraticBezierTo(
-        cx,
-        h * 0.31,
-        cx + w * 0.13 * scale,
-        h * 0.27,
-      )
-      ..quadraticBezierTo(
-        cx + w * 0.10 * scale,
-        h * 0.36,
-        cx,
-        h * 0.38,
-      )
-      ..quadraticBezierTo(
-        cx - w * 0.10 * scale,
-        h * 0.36,
-        cx - w * 0.13 * scale,
-        h * 0.27,
-      )
-      ..close();
-    canvas.drawPath(pec, tintPaint);
-
-    // Arms.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.30 * scale, h * 0.27, w * 0.10, h * 0.32),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.20 * scale, h * 0.27, w * 0.10, h * 0.32),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-
-    // Legs.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.13, h * 0.65, w * 0.11, h * 0.32),
-        const Radius.circular(6),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.02, h * 0.65, w * 0.11, h * 0.32),
-        const Radius.circular(6),
-      ),
-      body,
-    );
   }
 
   @override
-  bool shouldRepaint(covariant _BodyFatBodyPainter old) =>
-      old.stop != stop || old.tint != tint;
+  bool shouldRepaint(covariant _BodyFatGridPainter old) => false;
 }

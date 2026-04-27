@@ -213,8 +213,8 @@ class _HeroBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 180,
-      height: 200,
+      width: 220,
+      height: 220,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -233,94 +233,16 @@ class _HeroBody extends StatelessWidget {
               ),
             ),
           ),
-          // Body silhouette painted.
-          CustomPaint(
-            size: const Size(160, 190),
-            painter: _BodyPainter(),
+          // Painted muscle figure (front view, purple highlights).
+          Image.asset(
+            'assets/body-front.png',
+            fit: BoxFit.contain,
+            height: 200,
           ),
         ],
       ),
     );
   }
-}
-
-class _BodyPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cx = w * 0.5;
-    final body = Paint()
-      ..color = AppPalette.purple.withValues(alpha: 0.65)
-      ..style = PaintingStyle.fill;
-
-    // Head.
-    canvas.drawCircle(Offset(cx, h * 0.13), w * 0.085, body);
-
-    // Torso.
-    final torso = Path()
-      ..moveTo(cx - w * 0.18, h * 0.24)
-      ..quadraticBezierTo(cx - w * 0.22, h * 0.30, cx - w * 0.21, h * 0.42)
-      ..quadraticBezierTo(cx - w * 0.23, h * 0.50, cx - w * 0.16, h * 0.58)
-      ..lineTo(cx - w * 0.10, h * 0.65)
-      ..lineTo(cx + w * 0.10, h * 0.65)
-      ..lineTo(cx + w * 0.16, h * 0.58)
-      ..quadraticBezierTo(cx + w * 0.23, h * 0.50, cx + w * 0.21, h * 0.42)
-      ..quadraticBezierTo(cx + w * 0.22, h * 0.30, cx + w * 0.18, h * 0.24)
-      ..close();
-    canvas.drawPath(torso, body);
-
-    // Pec accent (lighter violet).
-    final pec = Paint()
-      ..color = AppPalette.purpleSoft.withValues(alpha: 0.55);
-    final pecPath = Path()
-      ..moveTo(cx - w * 0.16, h * 0.27)
-      ..quadraticBezierTo(cx, h * 0.31, cx + w * 0.16, h * 0.27)
-      ..quadraticBezierTo(cx + w * 0.10, h * 0.38, cx, h * 0.40)
-      ..quadraticBezierTo(cx - w * 0.10, h * 0.38, cx - w * 0.16, h * 0.27)
-      ..close();
-    canvas.drawPath(pecPath, pec);
-
-    // Arms.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.32, h * 0.27, w * 0.10, h * 0.32),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.22, h * 0.27, w * 0.10, h * 0.32),
-        const Radius.circular(8),
-      ),
-      body,
-    );
-
-    // Legs.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - w * 0.13, h * 0.65, w * 0.11, h * 0.32),
-        const Radius.circular(6),
-      ),
-      body,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx + w * 0.02, h * 0.65, w * 0.11, h * 0.32),
-        const Radius.circular(6),
-      ),
-      body,
-    );
-
-    // Eye glow.
-    final eye = Paint()..color = AppPalette.purple;
-    canvas.drawCircle(Offset(cx - w * 0.025, h * 0.13), 2, eye);
-    canvas.drawCircle(Offset(cx + w * 0.025, h * 0.13), 2, eye);
-  }
-
-  @override
-  bool shouldRepaint(covariant _BodyPainter old) => false;
 }
 
 // ─── Overall rank pill ─────────────────────────────────────

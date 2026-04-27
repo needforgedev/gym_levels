@@ -283,72 +283,13 @@ class _HeroAvatar extends StatelessWidget {
         ],
       ),
       child: ClipOval(
-        child: CustomPaint(painter: _AvatarFacePainter()),
+        child: Image.asset(
+          'assets/hero-bust.png',
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }
-}
-
-/// Paints a flat anime-style head: dark hair cap on top, warm face oval
-/// below, two small violet "glow" eyes. Drawn proportional to the canvas
-/// so it scales with the parent's size.
-class _AvatarFacePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // Face oval (light skin tone, slightly transparent so the dark gradient
-    // behind shows through subtly).
-    final facePaint = Paint()..color = const Color(0xD9F0D5B8);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.5, h * 0.62),
-        width: w * 0.55,
-        height: h * 0.62,
-      ),
-      facePaint,
-    );
-
-    // Hair cap (dark) — sits across the top half, dipping just over the
-    // forehead. Use a path for the silhouette.
-    final hairPaint = Paint()..color = const Color(0xFF1A0F2B);
-    final hair = Path()
-      ..moveTo(w * 0.18, h * 0.45)
-      ..quadraticBezierTo(w * 0.18, h * 0.12, w * 0.5, h * 0.10)
-      ..quadraticBezierTo(w * 0.82, h * 0.12, w * 0.82, h * 0.45)
-      ..lineTo(w * 0.78, h * 0.40)
-      ..lineTo(w * 0.70, h * 0.50)
-      ..lineTo(w * 0.62, h * 0.42)
-      ..lineTo(w * 0.50, h * 0.50)
-      ..lineTo(w * 0.40, h * 0.42)
-      ..lineTo(w * 0.32, h * 0.50)
-      ..lineTo(w * 0.22, h * 0.40)
-      ..close();
-    canvas.drawPath(hair, hairPaint);
-
-    // Eyes — violet glow. Two narrow ellipses.
-    final eyePaint = Paint()..color = AppPalette.purple;
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.40, h * 0.62),
-        width: w * 0.08,
-        height: h * 0.10,
-      ),
-      eyePaint,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w * 0.60, h * 0.62),
-        width: w * 0.08,
-        height: h * 0.10,
-      ),
-      eyePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _AvatarFacePainter oldDelegate) => false;
 }
 
 // ─── Level + Total XP strip ────────────────────────────────
