@@ -38,10 +38,10 @@ class _SessionMinutesScreenState extends State<SessionMinutesScreen> {
   }
 
   static const _options = [
-    (15, '15 – 30 min', 'Quick session'),
-    (30, '30 – 45 min', 'Standard session'),
-    (45, '45 – 60 min', 'Long session'),
-    (60, '60 – 90 min', 'Extended session'),
+    (15, '15–30 min'),
+    (30, '30–45 min'),
+    (45, '45–60 min'),
+    (60, '60–90 min'),
   ];
 
   @override
@@ -49,8 +49,8 @@ class _SessionMinutesScreenState extends State<SessionMinutesScreen> {
     final onboarded = context.watch<PlayerState>().isOnboarded;
     return OnboardingScaffold(
       section: OnboardingSection.operations,
-      percent: 95,
-      subtitle: 'Sizing session window…',
+      percent: 94,
+      subtitle: 'Allocating session duration…',
       title: 'How long are your typical workouts?',
       nextEnabled: _minutes != null,
       onBack: () => context.go(onboarded ? '/home' : '/training-days'),
@@ -61,7 +61,7 @@ class _SessionMinutesScreenState extends State<SessionMinutesScreen> {
           for (final o in _options)
             OnboardingRadioTile(
               label: o.$2,
-              subtitle: o.$3,
+              icon: const Icon(Icons.access_time),
               selected: _minutes == o.$1,
               onTap: () => setState(() => _minutes = o.$1),
             ),

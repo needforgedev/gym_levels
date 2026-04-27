@@ -66,15 +66,32 @@ class _PriorityMusclesScreenState extends State<PriorityMusclesScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.objectives,
       percent: 30,
-      subtitle: 'Prioritising target muscle groups…',
-      title: 'Pick up to 3 muscle groups.',
+      subtitle: 'Prioritizing target zones…',
+      title: 'Select up to 3 muscle groups to prioritize:',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go('/body-type'),
       onNext: _save,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Centered "X / 3 SELECTED" header — amber when any picked,
+          // muted otherwise. Matches design v2 onboarding-questions.jsx.
+          Center(
+            child: Text(
+              '${_selected.length} / $_cap SELECTED',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: _selected.isEmpty
+                    ? AppPalette.textMuted
+                    : AppPalette.amber,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           Wrap(
+            alignment: WrapAlignment.center,
             spacing: 8,
             runSpacing: 10,
             children: [
@@ -87,11 +104,6 @@ class _PriorityMusclesScreenState extends State<PriorityMusclesScreen> {
                   onTap: () => _toggle(o.$1),
                 ),
             ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '${_selected.length} / $_cap selected · weighted 1.5× in rank math',
-            style: AppType.system(color: AppPalette.textMuted),
           ),
         ],
       ),

@@ -93,16 +93,27 @@ class OnboardingScaffold extends StatelessWidget {
                   accent: accent,
                 ),
               ],
+              // Body + CONTINUE flow together inside a scrollable column —
+              // the design has CONTINUE sitting right under the answer,
+              // not pinned to the screen bottom (`design/v2/onboarding-shell.jsx`
+              // OBContinue is a normal flow div, not absolute).
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: child,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        child: child,
+                      ),
+                      _ContinueBar(
+                        onTap: onNext,
+                        enabled: nextEnabled,
+                        label: continueLabel,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _ContinueBar(
-                onTap: onNext,
-                enabled: nextEnabled,
-                label: continueLabel,
               ),
             ],
           ),

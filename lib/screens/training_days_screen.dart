@@ -83,7 +83,7 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.operations,
       percent: 90,
-      subtitle: 'Locking weekly tempo…',
+      subtitle: 'Scheduling operations…',
       title: 'Which days can you train?',
       nextEnabled: _days.length >= 2,
       onBack: () => context.go(onboarded ? '/home' : '/calibrating/4'),
@@ -125,12 +125,18 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
             }),
           ),
           const SizedBox(height: AppSpace.s4),
-          Text(
-            '${_days.length} / 7 days selected · min 2',
-            style: AppType.system(
-              color: _days.length >= 2
-                  ? AppPalette.textMuted
-                  : AppPalette.danger,
+          Center(
+            child: Text(
+              _days.length >= 2
+                  ? '${_days.length} day${_days.length == 1 ? "" : "s"} selected'
+                  : 'pick at least 2 days',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _days.length >= 2
+                    ? AppPalette.textMuted
+                    : AppPalette.danger,
+              ),
             ),
           ),
         ],

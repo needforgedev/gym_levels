@@ -72,8 +72,8 @@ class _LimitationsScreenState extends State<LimitationsScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
       percent: 54,
-      subtitle: 'Logging injury history…',
-      title: 'Any injuries or limitations?',
+      subtitle: 'Mapping constraint flags…',
+      title: 'Do you have any injuries or limitations?',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go('/equipment'),
       onNext: _save,

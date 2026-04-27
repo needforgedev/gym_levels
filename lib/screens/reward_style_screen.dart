@@ -46,8 +46,8 @@ class _RewardStyleScreenState extends State<RewardStyleScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.objectives,
       percent: 36,
-      subtitle: 'Calibrating reward protocol…',
-      title: 'What excites you most?',
+      subtitle: 'Configuring dopamine circuits…',
+      title: 'What type of rewards excite you most?',
       nextEnabled: _value != null,
       onBack: () => context.go('/priority-muscles'),
       onNext: _save,

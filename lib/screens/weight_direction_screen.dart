@@ -40,9 +40,9 @@ class _WeightDirectionScreenState extends State<WeightDirectionScreen> {
   }
 
   static const _options = [
-    ('gain', 'Gain', 'Bulk up, build mass'),
-    ('lose', 'Lose', 'Cut, reveal the work'),
-    ('maintain', 'Maintain', 'Hold steady, get stronger'),
+    ('gain', 'Gain Weight', 'Build mass and strength', Icons.arrow_upward),
+    ('lose', 'Lose Weight', 'Cut body fat', Icons.arrow_downward),
+    ('maintain', 'Maintain', 'Stay at current weight', Icons.gps_fixed),
   ];
 
   @override
@@ -50,8 +50,8 @@ class _WeightDirectionScreenState extends State<WeightDirectionScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.attributes,
       percent: 72,
-      subtitle: 'Setting mass objective…',
-      title: 'Target weight goal?',
+      subtitle: 'Setting mission directive…',
+      title: 'Do you have a target weight goal?',
       nextEnabled: _value != null,
       onBack: () => context.go('/weight'),
       onNext: _save,
@@ -62,6 +62,7 @@ class _WeightDirectionScreenState extends State<WeightDirectionScreen> {
             OnboardingRadioTile(
               label: o.$2,
               subtitle: o.$3,
+              icon: Icon(o.$4),
               selected: _value == o.$1,
               onTap: () => setState(() => _value = o.$1),
             ),

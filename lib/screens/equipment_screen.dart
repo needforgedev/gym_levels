@@ -65,8 +65,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
       percent: 48,
-      subtitle: 'Scanning available armoury…',
-      title: 'What equipment do you have?',
+      subtitle: 'Scanning inventory…',
+      title: 'Select all equipment you have access to:',
       nextEnabled: _selected.isNotEmpty,
       onBack: () => context.go(onboarded ? '/home' : '/tenure'),
       onNext: _save,

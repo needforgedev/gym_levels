@@ -57,8 +57,8 @@ class _TrainingStylesScreenState extends State<TrainingStylesScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
       percent: 60,
-      subtitle: 'Profiling prior disciplines…',
-      title: 'Styles you have tried:',
+      subtitle: 'Cross-referencing disciplines…',
+      title: 'What training styles have you tried before?',
       onBack: () => context.go('/limitations'),
       onNext: _save,
       child: Wrap(

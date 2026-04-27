@@ -45,8 +45,8 @@ class _TenureScreenState extends State<TenureScreen> {
     return OnboardingScaffold(
       section: OnboardingSection.experience,
       percent: 42,
-      subtitle: 'Estimating prior training payload…',
-      title: 'Years under the bar:',
+      subtitle: 'Assessing combat history…',
+      title: 'How long have you been training?',
       onBack: () => context.go('/calibrating/2'),
       onNext: _save,
       child: Column(

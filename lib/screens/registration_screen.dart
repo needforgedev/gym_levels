@@ -104,25 +104,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               ],
             ),
           ),
-          const SizedBox(height: AppSpace.s3),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _hintFor(_value),
-                style: AppType.system(
-                  color: _valid || _value.isEmpty
-                      ? AppPalette.textMuted
-                      : AppPalette.danger,
-                ),
-              ),
-              Text(
-                '${_value.length} / 20',
-                style: AppType.monoMD(color: AppPalette.textMuted)
-                    .copyWith(fontSize: 11),
-              ),
-            ],
-          ),
+          // Counter is now inline inside the input. Hint stays below.
+          if (_value.isNotEmpty && !_valid) ...[
+            const SizedBox(height: AppSpace.s3),
+            Text(
+              _hintFor(_value),
+              style: AppType.system(color: AppPalette.danger),
+            ),
+          ],
         ],
       ),
     );
@@ -199,38 +188,59 @@ class _NameFieldState extends State<_NameField> {
       ),
       child: Material(
         type: MaterialType.transparency,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: TextField(
-            controller: widget.controller,
-            focusNode: widget.focusNode,
-            onChanged: widget.onChanged,
-            onSubmitted: widget.onSubmitted,
-            maxLength: 20,
-            textInputAction: TextInputAction.done,
-            textCapitalization: TextCapitalization.words,
-            cursorColor: AppPalette.amber,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: AppPalette.textPrimary,
-            ),
-            inputFormatters: [
-              FilteringTextInputFormatter.deny(RegExp(r'[\n\t]')),
-            ],
-            decoration: InputDecoration(
-              hintText: 'Enter codename',
-              hintStyle: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: AppPalette.textMuted,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 56, 0),
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                onChanged: widget.onChanged,
+                onSubmitted: widget.onSubmitted,
+                maxLength: 20,
+                textInputAction: TextInputAction.done,
+                textCapitalization: TextCapitalization.words,
+                cursorColor: AppPalette.amber,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppPalette.textPrimary,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.deny(RegExp(r'[\n\t]')),
+                ],
+                decoration: InputDecoration(
+                  hintText: 'Enter codename',
+                  hintStyle: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: AppPalette.textMuted,
+                  ),
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  counterText: '',
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-              border: InputBorder.none,
-              isCollapsed: true,
-              counterText: '',
-              contentPadding: EdgeInsets.zero,
             ),
-          ),
+            // Inline character counter pinned to the right edge.
+            Positioned(
+              right: 16,
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: widget.controller,
+                builder: (ctx, value, _) => Text(
+                  '${value.text.length}/20',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontFamily: 'JetBrainsMono',
+                    color: AppPalette.textDim,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
