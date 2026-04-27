@@ -18,8 +18,10 @@ import '../widgets/tab_bar.dart';
 ///   • Quest cards: 42px icon block, title + +XP top-right, description,
 ///     "Progress" label + count, gradient progress bar.
 ///
-/// Daily quests are wired to the real engine. Weekly + Boss tabs are
-/// locked placeholders until §3.1 / §3.2.
+/// Daily / Weekly / Boss tabs are all wired to the real engine
+/// ([QuestEngine.rotateDailyIfNeeded] / `rotateWeeklyIfNeeded` /
+/// `seedBossesIfNeeded`). Boss tiles drill into `/boss-detail` via
+/// `_QuestCard.onTap`.
 class QuestsScreen extends StatefulWidget {
   const QuestsScreen({super.key});
 

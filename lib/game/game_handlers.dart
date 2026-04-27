@@ -1,7 +1,9 @@
 import '../data/models/quest.dart';
 import '../data/models/workout.dart';
+import '../data/services/_now.dart';
 import '../data/services/analytics_service.dart';
 import '../data/services/exercise_service.dart';
+import '../data/services/player_class_service.dart';
 import '../data/services/sets_service.dart';
 import '../data/services/workout_service.dart';
 import 'quest_engine.dart';
@@ -85,6 +87,29 @@ class GameHandlers {
       });
     }
 
+    // Boss-completion side-effect: pick the first boss in the
+    // newly-completed list (the celebration screen handles one at a
+    // time) and persist its buff to `player_class.evolution_history`
+    // as `'buff:<key>@<epoch>'`. Real XP-modifier integration lands
+    // with the active-buffs service.
+    Quest? bossDefeated;
+    BossBuff? buff;
+    for (final q in completedQuests) {
+      if (q.type == 'boss') {
+        bossDefeated = q;
+        buff = QuestEngine.buffFor(q.description);
+        break;
+      }
+    }
+    if (bossDefeated != null && buff != null) {
+      await _persistBuff(buff);
+      await AnalyticsService.log('boss_completed', {
+        'quest_id': bossDefeated.id,
+        'kind': bossDefeated.description,
+        'buff': buff.key,
+      });
+    }
+
     return SessionSummary(
       workout: workout,
       setCount: sets.length,
@@ -95,7 +120,22 @@ class GameHandlers {
       streakMilestoneReached: streak.milestoneReached,
       completedQuests: completedQuests,
       questXpAwarded: questXp,
+      bossDefeated: bossDefeated,
+      bossBuff: buff,
     );
+  }
+
+  /// Appends `'buff:<key>@<epoch>'` to `player_class.evolution_history`.
+  /// Reuses that table because there's no dedicated buffs table yet —
+  /// this keeps the audit trail without a schema bump. Idempotent only
+  /// up to the timestamp; double-firing on the same workout would
+  /// double-write, but `onWorkoutFinished` is already documented as
+  /// "call once per workout".
+  static Future<void> _persistBuff(BossBuff buff) async {
+    final existing = await PlayerClassService.get();
+    if (existing == null) return;
+    final stamped = 'buff:${buff.key}@${nowSeconds()}';
+    await PlayerClassService.appendEvolutionEntry(stamped);
   }
 
   /// Convenience wrapper for the workout logger — computes per-set XP via
@@ -134,6 +174,8 @@ class SessionSummary {
     required this.streakMilestoneReached,
     required this.completedQuests,
     this.questXpAwarded = 0,
+    this.bossDefeated,
+    this.bossBuff,
   });
 
   final Workout? workout;
@@ -148,6 +190,11 @@ class SessionSummary {
   /// Total XP folded into the workout row from quests completed during this
   /// session. Surfaced on the post-session UI as a separate toast.
   final int questXpAwarded;
+
+  /// Set when this workout completed a boss quest. Drives the
+  /// `/boss-complete` celebration route in the logger's finish flow.
+  final Quest? bossDefeated;
+  final BossBuff? bossBuff;
 
   bool get leveledUp => levelAfter > levelBefore;
 

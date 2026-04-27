@@ -16,6 +16,28 @@ class PlayerClassService {
     return rows.isEmpty ? null : PlayerClassRow.fromRow(rows.first);
   }
 
+  /// Appends a free-form audit string to `evolution_history`. Used by
+  /// boss-completion to record buff awards (`'buff:<key>@<epoch>'`)
+  /// without taking a schema bump for an `active_buffs` table — the
+  /// real XP-modifier integration lands later.
+  static Future<void> appendEvolutionEntry(String entry) async {
+    final existing = await get();
+    if (existing == null) return;
+    final db = await AppDb.instance;
+    final history = [...existing.evolutionHistory, entry];
+    await db.insert(
+      T.playerClass,
+      PlayerClassRow(
+        userId: 1,
+        classKey: existing.classKey,
+        assignedAt: existing.assignedAt,
+        lastChangedAt: nowSeconds(),
+        evolutionHistory: history,
+      ).toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   /// Assign or reassign the player class. Appends the previous class to
   /// `evolution_history` for audit.
   static Future<void> assign(String classKey) async {

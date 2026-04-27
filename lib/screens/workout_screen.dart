@@ -256,8 +256,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     await state.refresh();
 
     if (!mounted) return;
+    final boss = summary.bossDefeated;
+    final buff = summary.bossBuff;
     if (summary.leveledUp) {
       context.go('/level-up');
+    } else if (boss != null && buff != null) {
+      context.go(
+        '/boss-complete',
+        extra: (title: boss.title, xp: boss.xpReward, buff: buff),
+      );
     } else if (summary.streakMilestoneReached) {
       context.go('/streak-milestone');
     } else if (fallbackRoute.startsWith('/workouts/')) {

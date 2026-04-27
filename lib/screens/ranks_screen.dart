@@ -129,7 +129,11 @@ class _RanksScreenState extends State<RanksScreen> {
                       const SizedBox(height: 18),
                       if (bundle != null)
                         for (final row in bundle.rows) ...[
-                          _MuscleRowCard(row: row),
+                          _MuscleRowCard(
+                            row: row,
+                            onTap: () =>
+                                context.go('/ranks/${row.key}'),
+                          ),
                           const SizedBox(height: 8),
                         ]
                       else
@@ -390,14 +394,15 @@ class _OverallBadge extends StatelessWidget {
 
 // ─── Per-muscle row ────────────────────────────────────────
 class _MuscleRowCard extends StatelessWidget {
-  const _MuscleRowCard({required this.row});
+  const _MuscleRowCard({required this.row, this.onTap});
   final _MuscleRow row;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final tierLabel =
         row.subRank.isEmpty ? row.tier.toUpperCase() : '${row.tier.toUpperCase()} ${row.subRank}';
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -513,6 +518,15 @@ class _MuscleRowCard extends StatelessWidget {
             color: AppPalette.textDim,
           ),
         ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: card,
       ),
     );
   }

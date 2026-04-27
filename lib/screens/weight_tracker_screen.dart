@@ -30,15 +30,39 @@ class WeightTrackerScreen extends StatefulWidget {
 
 enum _Range { d30, d90, y1 }
 
+class _ChartPoint {
+  const _ChartPoint({required this.epoch, required this.kg});
+  final int epoch;
+  final double kg;
+}
+
 class _WeightTrackerBundle {
   const _WeightTrackerBundle({
     required this.logs,
     required this.goal,
     required this.fallbackWeightKg,
+    required this.startWeightKg,
+    required this.chartPoints,
   });
   final List<WeightLog> logs;
   final Goal? goal;
+
+  /// Onboarding-time weight (`Player.weightKg`). Used as the canonical
+  /// "Start" anchor — if the user logs their first weight months after
+  /// onboarding, that log is *not* the start; the onboarding entry is.
   final double fallbackWeightKg;
+
+  /// Weight to render under the `Start` tab. Defaults to the onboarding
+  /// fallback when present; falls back to the first log's weight if the
+  /// onboarding row never recorded a weight.
+  final double startWeightKg;
+
+  /// Time-sorted points fed to the trend chart. Includes a synthetic
+  /// `(onboardedAt, fallbackWeightKg)` head when an onboarding weight
+  /// exists and predates the first log — that way a single log still
+  /// renders a real trend line instead of a "Log a weight to start
+  /// tracking" empty state.
+  final List<_ChartPoint> chartPoints;
 }
 
 class _WeightTrackerScreenState extends State<WeightTrackerScreen> {
@@ -48,14 +72,16 @@ class _WeightTrackerScreenState extends State<WeightTrackerScreen> {
   @override
   void initState() {
     super.initState();
-    // Capture the player's current weight before any awaits — using
-    // `context` after an async gap inside a State method trips the
-    // analyzer.
-    final fallback = context.read<PlayerState>().player?.weightKg ?? 0;
-    _future = _load(fallback);
+    // Capture the player's current weight + onboarding timestamp before
+    // any awaits — using `context` after an async gap inside a State
+    // method trips the analyzer.
+    final p = context.read<PlayerState>().player;
+    final fallback = p?.weightKg ?? 0;
+    final startEpoch = p?.onboardedAt ?? p?.createdAt ?? 0;
+    _future = _load(fallback, startEpoch);
   }
 
-  Future<_WeightTrackerBundle> _load(double fallback) async {
+  Future<_WeightTrackerBundle> _load(double fallback, int startEpoch) async {
     final results = await Future.wait([
       WeightLogService.all(),
       GoalsService.get(),
@@ -63,10 +89,32 @@ class _WeightTrackerScreenState extends State<WeightTrackerScreen> {
     final logs = (results[0] as List<WeightLog>).toList()
       ..sort((a, b) => a.loggedOn.compareTo(b.loggedOn));
     final goal = results[1] as Goal?;
+
+    // Start = onboarding weight if recorded; else the earliest log.
+    final startWeight = fallback > 0
+        ? fallback
+        : (logs.isNotEmpty ? logs.first.weightKg : 0.0);
+
+    // Synthesize the chart series. Prepend `(startEpoch, fallback)` when
+    // the onboarding weight predates the first log, so even a single
+    // post-onboarding log produces a 2-point trend line.
+    final points = <_ChartPoint>[];
+    final hasFallback = fallback > 0 && startEpoch > 0;
+    final beforeFirstLog =
+        logs.isEmpty || startEpoch < logs.first.loggedOn;
+    if (hasFallback && beforeFirstLog) {
+      points.add(_ChartPoint(epoch: startEpoch, kg: fallback));
+    }
+    for (final l in logs) {
+      points.add(_ChartPoint(epoch: l.loggedOn, kg: l.weightKg));
+    }
+
     return _WeightTrackerBundle(
       logs: logs,
       goal: goal,
       fallbackWeightKg: fallback,
+      startWeightKg: startWeight,
+      chartPoints: points,
     );
   }
 
@@ -95,9 +143,11 @@ class _WeightTrackerScreenState extends State<WeightTrackerScreen> {
       builder: (_) => _LogWeightSheet(initialWeightKg: currentWeightKg),
     );
     if (saved != true || !mounted) return;
-    final fallback = context.read<PlayerState>().player?.weightKg ?? 0;
+    final p = context.read<PlayerState>().player;
+    final fallback = p?.weightKg ?? 0;
+    final startEpoch = p?.onboardedAt ?? p?.createdAt ?? 0;
     setState(() {
-      _future = _load(fallback);
+      _future = _load(fallback, startEpoch);
     });
   }
 
@@ -228,10 +278,14 @@ class _CurrentWeightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final logs = bundle?.logs ?? const <WeightLog>[];
     final fallback = bundle?.fallbackWeightKg ?? 0;
+    final start = bundle?.startWeightKg ?? fallback;
     final current = logs.isNotEmpty ? logs.last.weightKg : fallback;
-    final previous =
-        logs.length >= 2 ? logs[logs.length - 2].weightKg : null;
-    final delta = previous == null ? 0.0 : current - previous;
+    // Prefer log-to-log delta; if there's only one log, fall back to
+    // current-vs-start so the user always sees their cumulative
+    // progress. Suppressed when the deltas would round to zero.
+    final logToLogDelta =
+        logs.length >= 2 ? current - logs[logs.length - 2].weightKg : null;
+    final delta = logToLogDelta ?? (start > 0 ? current - start : 0.0);
     final target = bundle?.goal?.targetWeightKg;
     final toGo = target == null ? null : (current - target);
 
@@ -384,8 +438,7 @@ class _StartCurrentTargetTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final logs = bundle?.logs ?? const <WeightLog>[];
     final fallback = bundle?.fallbackWeightKg ?? 0;
-    final start =
-        logs.isNotEmpty ? logs.first.weightKg : fallback;
+    final start = bundle?.startWeightKg ?? fallback;
     final current = logs.isNotEmpty ? logs.last.weightKg : fallback;
     final target = bundle?.goal?.targetWeightKg;
 
@@ -483,12 +536,17 @@ class _WeightTrendCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logs = bundle?.logs ?? const <WeightLog>[];
-    final cutoff = DateTime.now().subtract(windowFor(range));
-    final inRange = logs.where((l) {
-      final d = DateTime.fromMillisecondsSinceEpoch(l.loggedOn * 1000);
-      return d.isAfter(cutoff);
-    }).toList();
+    final all = bundle?.chartPoints ?? const <_ChartPoint>[];
+    final cutoffEpoch =
+        DateTime.now().subtract(windowFor(range)).millisecondsSinceEpoch ~/
+            1000;
+    var inRange = all.where((p) => p.epoch >= cutoffEpoch).toList();
+    // If the range cuts everything off (typical with fresh onboarding +
+    // a single log on day 0), still show every available point so the
+    // user gets a chart on first launch.
+    if (inRange.length < 2 && all.length >= 2) {
+      inRange = all;
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -549,7 +607,7 @@ class _WeightTrendCard extends StatelessWidget {
                       ),
                     ),
                   )
-                : CustomPaint(painter: _ChartPainter(logs: inRange)),
+                : CustomPaint(painter: _ChartPainter(points: inRange)),
           ),
           const SizedBox(height: 6),
           if (inRange.length >= 2)
@@ -558,7 +616,7 @@ class _WeightTrendCard extends StatelessWidget {
               children: [
                 Text(
                   _shortDate(DateTime.fromMillisecondsSinceEpoch(
-                    inRange.first.loggedOn * 1000,
+                    inRange.first.epoch * 1000,
                   )),
                   style: const TextStyle(
                     fontSize: 10,
@@ -567,7 +625,7 @@ class _WeightTrendCard extends StatelessWidget {
                 ),
                 Text(
                   _shortDate(DateTime.fromMillisecondsSinceEpoch(
-                    inRange[inRange.length ~/ 2].loggedOn * 1000,
+                    inRange[inRange.length ~/ 2].epoch * 1000,
                   )),
                   style: const TextStyle(
                     fontSize: 10,
@@ -576,7 +634,7 @@ class _WeightTrendCard extends StatelessWidget {
                 ),
                 Text(
                   _shortDate(DateTime.fromMillisecondsSinceEpoch(
-                    inRange.last.loggedOn * 1000,
+                    inRange.last.epoch * 1000,
                   )),
                   style: const TextStyle(
                     fontSize: 10,
@@ -645,15 +703,21 @@ class _RangeButton extends StatelessWidget {
 }
 
 class _ChartPainter extends CustomPainter {
-  _ChartPainter({required this.logs});
-  final List<WeightLog> logs;
+  _ChartPainter({required this.points});
+  final List<_ChartPoint> points;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (logs.length < 2) return;
-    final values = logs.map((l) => l.weightKg).toList();
-    final minY = values.reduce((a, b) => a < b ? a : b) - 0.3;
-    final maxY = values.reduce((a, b) => a > b ? a : b) + 0.3;
+    if (points.length < 2) return;
+    final values = points.map((p) => p.kg).toList();
+    var minY = values.reduce((a, b) => a < b ? a : b);
+    var maxY = values.reduce((a, b) => a > b ? a : b);
+    // Pad the range so a flat line doesn't sit on the bottom edge and
+    // so a tiny range still shows clear motion on the chart.
+    final span = (maxY - minY).abs();
+    final pad = span < 1 ? 1.0 : span * 0.2;
+    minY -= pad;
+    maxY += pad;
     final w = size.width;
     final h = size.height;
     final stepX = w / (values.length - 1);
@@ -730,10 +794,10 @@ class _ChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ChartPainter old) =>
-      old.logs.length != logs.length ||
-      old.logs.any(
-        (l) => !logs.any(
-          (m) => m.loggedOn == l.loggedOn && m.weightKg == l.weightKg,
+      old.points.length != points.length ||
+      old.points.any(
+        (p) => !points.any(
+          (q) => q.epoch == p.epoch && q.kg == p.kg,
         ),
       );
 }

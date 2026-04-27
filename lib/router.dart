@@ -4,6 +4,7 @@ import 'screens/age_screen.dart';
 import 'state/onboarding_flag.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
+import 'screens/boss_completion_screen.dart';
 import 'screens/boss_detail_screen.dart';
 import 'screens/calibrating_screen.dart';
 import 'screens/challenge_system_screen.dart';
@@ -13,6 +14,7 @@ import 'screens/height_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/level_up_screen.dart';
 import 'screens/limitations_screen.dart';
+import 'screens/muscle_detail_screen.dart';
 import 'screens/notification_prefs_screen.dart';
 import 'screens/paywall_screen.dart';
 import 'screens/priority_muscles_screen.dart';
@@ -39,8 +41,11 @@ import 'screens/workout_complete_screen.dart';
 import 'screens/workout_detail_screen.dart';
 import 'screens/workout_history_screen.dart';
 import 'screens/workout_screen.dart';
+import 'package:flutter/widgets.dart';
+
 import 'data/models/quest.dart';
 import 'game/game_handlers.dart';
+import 'game/quest_engine.dart';
 
 /// Full PRD §8 onboarding flow:
 ///
@@ -233,12 +238,36 @@ final appRouter = GoRouter(
     ),
     GoRoute(path: '/weight-tracker', builder: (_, _) => const WeightTrackerScreen()),
     GoRoute(path: '/ranks', builder: (_, _) => const RanksScreen()),
+    GoRoute(
+      path: '/ranks/:muscle',
+      builder: (ctx, state) => MuscleDetailScreen(
+        muscle: state.pathParameters['muscle']!,
+      ),
+    ),
     GoRoute(path: '/quests', builder: (_, _) => const QuestsScreen()),
     GoRoute(
       path: '/boss-detail',
       builder: (ctx, state) => BossDetailScreen(
         quest: state.extra is Quest ? state.extra as Quest : null,
       ),
+    ),
+    GoRoute(
+      path: '/boss-complete',
+      builder: (ctx, state) {
+        final extra = state.extra;
+        if (extra is! ({String title, int xp, BossBuff buff})) {
+          // No payload (deep-link or hot-restart) — bounce to /quests.
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => ctx.go('/quests'),
+          );
+          return const SizedBox.shrink();
+        }
+        return BossCompletionScreen(
+          title: extra.title,
+          xpReward: extra.xp,
+          buff: extra.buff,
+        );
+      },
     ),
     GoRoute(path: '/streak', builder: (_, _) => const StreakScreen()),
     GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),

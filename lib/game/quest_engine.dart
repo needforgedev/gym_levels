@@ -88,6 +88,12 @@ class QuestEngine {
       target: 160,
       xp: 2500,
       totalWeeks: 6,
+      buff: BossBuff(
+        key: 'iron_heart',
+        name: 'IRON HEART',
+        desc: '+10% XP on compound lifts for 7 days',
+        durationDays: 7,
+      ),
     ),
     BossQuestTemplate(
       kindKey: 'boss_bench_e1rm',
@@ -96,8 +102,25 @@ class QuestEngine {
       target: 99,
       xp: 2000,
       totalWeeks: 6,
+      buff: BossBuff(
+        key: 'press_titan',
+        name: 'PRESS TITAN',
+        desc: '+10% XP on bench + overhead press for 7 days',
+        durationDays: 7,
+      ),
     ),
   ];
+
+  /// Looks up the buff that ships with a completed boss kind. Returns
+  /// `null` when the kind isn't in `bossPool` (defensive — e.g. legacy
+  /// rows from a removed template).
+  static BossBuff? buffFor(String? kindKey) {
+    if (kindKey == null) return null;
+    for (final t in bossPool) {
+      if (t.kindKey == kindKey) return t.buff;
+    }
+    return null;
+  }
 
   // ─── Display metadata ───────────────────────────────────
   //
@@ -380,6 +403,7 @@ class BossQuestTemplate {
     required this.target,
     required this.xp,
     required this.totalWeeks,
+    this.buff,
   });
   final String kindKey;
   final String title;
@@ -387,6 +411,24 @@ class BossQuestTemplate {
   final int target;
   final int xp;
   final int totalWeeks;
+
+  /// Permanent buff awarded on completion (PRD §3.2). Display-only for now;
+  /// the XP-modifier side effect will land alongside the active-buffs
+  /// service. `null` for the empty-template fallbacks used by lookups.
+  final BossBuff? buff;
+}
+
+class BossBuff {
+  const BossBuff({
+    required this.key,
+    required this.name,
+    required this.desc,
+    required this.durationDays,
+  });
+  final String key;
+  final String name;
+  final String desc;
+  final int durationDays;
 }
 
 class QuestMeta {
