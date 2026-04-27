@@ -7,22 +7,38 @@ import '../data/models/workout.dart';
 import '../data/services/schedule_service.dart';
 import '../data/services/streak_service.dart';
 import '../data/services/workout_service.dart';
-import '../game/streak_engine.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
-import '../widgets/big_flame.dart';
 import '../widgets/in_app_shell.dart';
-import '../widgets/neon_card.dart';
 import '../widgets/tab_bar.dart';
 
-/// Which glyph a given calendar cell renders. `today` wins over everything;
-/// `workout` beats `rest` when the user trained off-schedule on a rest day.
-enum _DayType { workout, rest, miss, today, future }
+/// Streak screen — matches design v2 (`design/v2/screens-progress.jsx`
+/// `StreakScreen`).
+///
+/// Layout (top → bottom):
+///   • Centered "Streak" small title.
+///   • Hero row: pulsing flame icon + huge streak number with glow,
+///     followed by "day streak · On fire!" caption.
+///   • "N THIS MONTH" amber pill.
+///   • Streak Freezes card (snowflake icon block + count + 2 small
+///     snowflake chips on the right).
+///   • Month calendar card: arrows + month name, S/M/T/W/T/F/S header,
+///     7-column grid where each cell is amber (completed), teal (frozen),
+///     red (missed), or violet (rest/idle), with today highlighted.
+///   • Legend strip with 3 swatches.
+class StreakScreen extends StatefulWidget {
+  const StreakScreen({super.key});
+
+  @override
+  State<StreakScreen> createState() => _StreakScreenState();
+}
+
+enum _DayKind { future, rest, completed, frozen, missed, today }
 
 class _CellSpec {
-  const _CellSpec({required this.type, required this.date});
-  final _DayType type;
-  final DateTime date;
+  const _CellSpec({required this.day, required this.kind});
+  final int day;
+  final _DayKind kind;
 }
 
 class _StreakBundle {
@@ -30,19 +46,20 @@ class _StreakBundle {
     required this.streak,
     required this.cells,
     required this.workoutsThisMonth,
-    required this.monthLabel,
+    required this.monthName,
+    required this.year,
+    required this.firstWeekday,
+    required this.daysInMonth,
   });
   final Streak? streak;
   final List<_CellSpec> cells;
   final int workoutsThisMonth;
-  final String monthLabel;
-}
+  final String monthName;
+  final int year;
 
-class StreakScreen extends StatefulWidget {
-  const StreakScreen({super.key});
-
-  @override
-  State<StreakScreen> createState() => _StreakScreenState();
+  /// Sunday=0..Saturday=6 — what column day 1 starts in.
+  final int firstWeekday;
+  final int daysInMonth;
 }
 
 class _StreakScreenState extends State<StreakScreen> {
@@ -57,16 +74,14 @@ class _StreakScreenState extends State<StreakScreen> {
   Future<_StreakBundle> _load() async {
     final results = await Future.wait([
       StreakService.get(),
-      WorkoutService.recent(limit: 60),
+      WorkoutService.recent(limit: 200),
       ScheduleService.get(),
     ]);
     final streak = results[0] as Streak?;
     final recent = results[1] as List<Workout>;
     final schedule = results[2] as ScheduleRow?;
 
-    // Build a set of local dates on which the user logged a finished
-    // workout. Key is `yyyy-mm-dd` in the device's local zone so it lines
-    // up with the calendar cells.
+    // Workout-day set for the month being shown (current month).
     final workoutDays = <String>{};
     for (final w in recent) {
       final end = w.endedAt;
@@ -77,53 +92,57 @@ class _StreakScreenState extends State<StreakScreen> {
 
     final scheduleDays = schedule?.days.toSet() ?? <int>{};
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final firstOfMonth = DateTime(now.year, now.month, 1);
+    final daysInMonth =
+        DateTime(now.year, now.month + 1, 0).day; // last day of month
+    // Sunday=0..Saturday=6 (DateTime.weekday: Mon=1..Sun=7)
+    final firstCol = firstOfMonth.weekday % 7;
 
-    // 30-day rolling window ending today — day 0 is 29 days ago, day 29 is
-    // today. Matches the hero copy "last 30 days".
     final cells = <_CellSpec>[];
-    var workoutsCount = 0;
-    for (var i = 29; i >= 0; i--) {
-      final d = today.subtract(Duration(days: i));
-      final key = _ymd(d);
-      final isToday = i == 0;
+    var workoutsThisMonth = 0;
+    for (var d = 1; d <= daysInMonth; d++) {
+      final date = DateTime(now.year, now.month, d);
+      final key = _ymd(date);
+      final isToday = d == now.day;
       final didWorkout = workoutDays.contains(key);
-      // weekday: Mon=1..Sun=7 in Dart, our schedule uses Mon=0..Sun=6.
-      final weekdayIdx = (d.weekday - 1) % 7;
+      final weekdayIdx = (date.weekday - 1) % 7; // 0=Mon..6=Sun
       final isScheduled = scheduleDays.contains(weekdayIdx);
+      final isFuture = date.isAfter(DateTime(now.year, now.month, now.day));
 
-      final _DayType type;
+      _DayKind kind;
       if (didWorkout) {
-        workoutsCount += 1;
-        type = _DayType.workout;
+        workoutsThisMonth += 1;
+        kind = _DayKind.completed;
       } else if (isToday) {
-        type = _DayType.today;
+        kind = _DayKind.today;
+      } else if (isFuture) {
+        kind = _DayKind.future;
       } else if (isScheduled) {
-        type = _DayType.miss;
+        kind = _DayKind.missed;
       } else {
-        type = _DayType.rest;
+        kind = _DayKind.rest;
       }
-      cells.add(_CellSpec(type: type, date: d));
+      cells.add(_CellSpec(day: d, kind: kind));
     }
-
-    final monthLabel =
-        '${_monthShort(today.month)} ${today.year}'.toUpperCase();
 
     return _StreakBundle(
       streak: streak,
       cells: cells,
-      workoutsThisMonth: workoutsCount,
-      monthLabel: monthLabel,
+      workoutsThisMonth: workoutsThisMonth,
+      monthName: _monthName(now.month),
+      year: now.year,
+      firstWeekday: firstCol,
+      daysInMonth: daysInMonth,
     );
   }
 
   static String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}';
 
-  static String _monthShort(int m) {
+  static String _monthName(int m) {
     const names = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
     ];
     return names[(m - 1).clamp(0, 11)];
   }
@@ -134,161 +153,296 @@ class _StreakScreenState extends State<StreakScreen> {
     return InAppShell(
       active: AppTab.streak,
       title: 'STREAK',
+      showHeader: false,
       child: FutureBuilder<_StreakBundle>(
         future: _future,
         builder: (ctx, snap) {
           final bundle = snap.data;
-          final current = s.streak;
-          final longest = bundle?.streak?.longest ?? current;
-          final nextMilestone = _nextMilestone(current);
-          final heroTitle = _heroTitle(current);
-
           return ListView(
-            padding: const EdgeInsets.all(AppSpace.s5),
+            padding: EdgeInsets.fromLTRB(
+              0,
+              0,
+              0,
+              InAppShell.tabBarSafeBottom +
+                  MediaQuery.of(context).padding.bottom,
+            ),
             children: [
-              _HeroCard(
-                current: current,
-                longest: longest,
-                heroTitle: heroTitle,
-                nextMilestone: nextMilestone,
-              ),
-              const SizedBox(height: AppSpace.s4),
-              if (bundle != null)
-                _CalendarCard(
-                  cells: bundle.cells,
-                  monthLabel: bundle.monthLabel,
-                  workoutsCount: bundle.workoutsThisMonth,
-                )
-              else
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSpace.s6),
-                  child: Center(
-                    child: CircularProgressIndicator(color: AppPalette.flame),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Center(
+                  child: Text(
+                    'Streak',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppPalette.textPrimary,
+                    ),
                   ),
                 ),
+              ),
+              // Hero number.
+              _HeroNumber(streak: s.streak),
+              const SizedBox(height: 16),
+              // 'N THIS MONTH' pill.
+              Center(
+                child: _ThisMonthPill(count: bundle?.workoutsThisMonth ?? 0),
+              ),
+              const SizedBox(height: 16),
+              // Freezes card.
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: _FreezesCard(available: 2, total: 2),
+              ),
+              const SizedBox(height: 16),
+              // Calendar.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _CalendarCard(bundle: bundle),
+              ),
             ],
           );
         },
       ),
     );
   }
-
-  /// Returns (target, daysToGo) for the next milestone up from `current`,
-  /// or null once the user has passed every milestone.
-  static ({int target, int daysToGo})? _nextMilestone(int current) {
-    for (final m in StreakEngine.milestones) {
-      if (current < m) return (target: m, daysToGo: m - current);
-    }
-    return null;
-  }
-
-  static String _heroTitle(int current) {
-    if (current == 0) return 'START THE FIRE';
-    if (current < 3) return 'WARMING UP';
-    if (current < 7) return 'PICKING UP';
-    if (current < 14) return 'ON FIRE';
-    if (current < 30) return 'BLAZING';
-    if (current < 60) return 'INFERNO';
-    if (current < 180) return 'UNSTOPPABLE';
-    return 'LEGENDARY';
-  }
 }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.current,
-    required this.longest,
-    required this.heroTitle,
-    required this.nextMilestone,
-  });
+// ─── Hero flame + number ───────────────────────────────────
+class _HeroNumber extends StatefulWidget {
+  const _HeroNumber({required this.streak});
+  final int streak;
 
-  final int current;
-  final int longest;
-  final String heroTitle;
-  final ({int target, int daysToGo})? nextMilestone;
+  @override
+  State<_HeroNumber> createState() => _HeroNumberState();
+}
+
+class _HeroNumberState extends State<_HeroNumber>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return NeonCard(
-      glow: GlowColor.flame,
-      padding: const EdgeInsets.all(AppSpace.s7),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(
         children: [
-          SizedBox(
-            width: 96,
-            height: 96,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                const BigFlame(),
-                Text(
-                  '$current',
-                  style: AppType.monoXL(color: AppPalette.obsidian).copyWith(
-                    fontSize: 36,
-                    height: 1,
+          AnimatedBuilder(
+            animation: _ctl,
+            builder: (context, _) {
+              final t = _ctl.value;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.local_fire_department,
+                    size: 52,
+                    color: AppPalette.streak,
                     shadows: [
                       Shadow(
-                        color: AppPalette.flame,
-                        blurRadius: 8,
+                        color: AppPalette.streak.withValues(
+                          alpha: 0.5 + 0.4 * t,
+                        ),
+                        blurRadius: 6 + t * 8,
                       ),
                     ],
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${widget.streak}',
+                    style: TextStyle(
+                      fontSize: 96,
+                      fontFamily: 'BebasNeue',
+                      height: 0.9,
+                      color: AppPalette.streak,
+                      shadows: [
+                        Shadow(
+                          color: AppPalette.streak.withValues(alpha: 0.6),
+                          blurRadius: 24,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: 'day streak · ',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppPalette.textMuted,
+                  ),
+                ),
+                TextSpan(
+                  text: widget.streak == 0 ? 'Light it up' : 'On fire!',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontStyle: FontStyle.italic,
+                    color: AppPalette.streak,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: AppSpace.s6),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── This-month pill ──────────────────────────────────────
+class _ThisMonthPill extends StatelessWidget {
+  const _ThisMonthPill({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: AppPalette.streak.withValues(alpha: 0.15),
+        border: Border.all(
+          color: AppPalette.streak.withValues(alpha: 0.40),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.calendar_month, size: 12, color: AppPalette.streak),
+          const SizedBox(width: 6),
+          Text(
+            '$count THIS MONTH',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: AppPalette.streak,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Freezes card ──────────────────────────────────────────
+class _FreezesCard extends StatelessWidget {
+  const _FreezesCard({required this.available, required this.total});
+  final int available;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xE61A0F2B), Color(0xE6120A1F)],
+        ),
+        border: Border.all(
+          color: AppPalette.borderViolet,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: AppPalette.teal.withValues(alpha: 0.12),
+              border: Border.all(
+                color: AppPalette.teal.withValues(alpha: 0.30),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              Icons.ac_unit,
+              size: 20,
+              color: AppPalette.teal,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'DAY STREAK · BEST $longest',
-                  style: AppType.label(color: AppPalette.flame),
+                  'Streak Freezes — $available/$total available',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppPalette.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  heroTitle,
-                  style: AppType.displayLG(color: AppPalette.textPrimary),
+                  available == total
+                      ? 'All freezes available'
+                      : '$available available · ${total - available} used',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppPalette.textMuted,
+                  ),
                 ),
-                const SizedBox(height: 6),
-                _MilestoneLine(current: current, next: nextMilestone),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MilestoneLine extends StatelessWidget {
-  const _MilestoneLine({required this.current, required this.next});
-  final int current;
-  final ({int target, int daysToGo})? next;
-
-  @override
-  Widget build(BuildContext context) {
-    if (next == null) {
-      return Text(
-        'Every milestone cleared. You are the fire.',
-        style: AppType.bodySM(color: AppPalette.textSecondary),
-      );
-    }
-    final m = next!;
-    return Text.rich(
-      TextSpan(
-        style: AppType.bodySM(color: AppPalette.textSecondary),
-        children: [
-          const TextSpan(text: 'Next milestone: '),
-          TextSpan(
-            text: '${m.target} days',
-            style: AppType.bodySM(color: AppPalette.xpGold),
-          ),
-          TextSpan(
-            text: current == 0
-                ? ' — log a workout to begin.'
-                : ' — ${m.daysToGo} to go.',
+          Row(
+            children: [
+              for (var i = 0; i < total; i++) ...[
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: i < available
+                        ? AppPalette.teal.withValues(alpha: 0.15)
+                        : AppPalette.purple.withValues(alpha: 0.06),
+                    border: Border.all(
+                      color: i < available
+                          ? AppPalette.teal.withValues(alpha: 0.40)
+                          : AppPalette.purple.withValues(alpha: 0.20),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.ac_unit,
+                    size: 14,
+                    color: i < available
+                        ? AppPalette.teal
+                        : AppPalette.textDim,
+                  ),
+                ),
+                if (i < total - 1) const SizedBox(width: 4),
+              ],
+            ],
           ),
         ],
       ),
@@ -296,95 +450,134 @@ class _MilestoneLine extends StatelessWidget {
   }
 }
 
+// ─── Calendar card ─────────────────────────────────────────
 class _CalendarCard extends StatelessWidget {
-  const _CalendarCard({
-    required this.cells,
-    required this.monthLabel,
-    required this.workoutsCount,
-  });
-
-  final List<_CellSpec> cells;
-  final String monthLabel;
-  final int workoutsCount;
+  const _CalendarCard({required this.bundle});
+  final _StreakBundle? bundle;
 
   @override
   Widget build(BuildContext context) {
-    return NeonCard(
-      glow: GlowColor.none,
-      padding: const EdgeInsets.all(AppSpace.s4),
-      pulse: false,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xE61A0F2B), Color(0xE6120A1F)],
+        ),
+        border: Border.all(
+          color: AppPalette.borderViolet,
+          width: 1,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Month nav row.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'LAST 30 · $monthLabel',
-                style: AppType.label(color: AppPalette.textMuted),
+              _NavArrow(
+                icon: Icons.chevron_left,
+                onTap: () {},
               ),
               Text(
-                '$workoutsCount / 30 DAYS',
-                style: AppType.label(color: AppPalette.textMuted),
+                bundle == null
+                    ? '—'
+                    : '${bundle!.monthName} ${bundle!.year}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppPalette.textPrimary,
+                ),
+              ),
+              _NavArrow(
+                icon: Icons.chevron_right,
+                onTap: () {},
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          // Day-of-week header.
           Row(
-            children: const ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    d,
-                    style: AppType.label(color: AppPalette.textMuted)
-                        .copyWith(fontSize: 10),
+            children: [
+              for (final l in const ['S', 'M', 'T', 'W', 'T', 'F', 'S'])
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      l,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppPalette.textMuted,
+                      ),
+                    ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 4),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 7,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
-            // Pad the front so the first cell aligns to its real weekday
-            // column. Dart weekday Mon=1..Sun=7; grid is Mon..Sun.
-            children: [
-              for (var i = 0; i < _leadingBlanks(cells); i++)
-                const SizedBox.shrink(),
-              for (final c in cells) _DayCell(spec: c),
             ],
           ),
-          const SizedBox(height: AppSpace.s4),
+          const SizedBox(height: 6),
+          // Calendar grid.
+          if (bundle != null) _Grid(bundle: bundle!),
+          const SizedBox(height: 14),
+          // Legend.
           Wrap(
-            spacing: 10,
+            spacing: 12,
             runSpacing: 6,
-            children: const [
-              _Legend(color: AppPalette.xpGold, label: 'WORKOUT'),
-              _Legend(
-                color: Colors.transparent,
-                borderColor: AppPalette.purple,
-                label: 'REST'),
-              _Legend(color: AppPalette.carbon, label: 'MISSED'),
-              _Legend(
-                color: Colors.transparent,
-                borderColor: AppPalette.teal,
-                label: 'TODAY'),
+            children: [
+              _LegendItem(color: AppPalette.amber, label: 'Completed'),
+              _LegendItem(color: AppPalette.teal, label: 'Freeze'),
+              _LegendItem(color: AppPalette.streak, label: 'Missed'),
             ],
           ),
         ],
       ),
     );
   }
+}
 
-  static int _leadingBlanks(List<_CellSpec> cells) {
-    if (cells.isEmpty) return 0;
-    // Grid column: Mon=0..Sun=6.
-    final firstCol = (cells.first.date.weekday - 1) % 7;
-    return firstCol;
+class _NavArrow extends StatelessWidget {
+  const _NavArrow({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, size: 16, color: AppPalette.textMuted),
+        ),
+      ),
+    );
+  }
+}
+
+class _Grid extends StatelessWidget {
+  const _Grid({required this.bundle});
+  final _StreakBundle bundle;
+
+  @override
+  Widget build(BuildContext context) {
+    // Pad the front so day 1 lands in its real weekday column.
+    final blanks = bundle.firstWeekday;
+    final cells = <Widget>[
+      for (var i = 0; i < blanks; i++) const SizedBox.shrink(),
+      for (final spec in bundle.cells) _DayCell(spec: spec),
+    ];
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 7,
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      children: cells,
+    );
   }
 }
 
@@ -394,58 +587,76 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = BoxDecoration(borderRadius: BorderRadius.circular(4));
-    switch (spec.type) {
-      case _DayType.workout:
-        return Container(
-          decoration: base.copyWith(
-            color: AppPalette.xpGold,
-            boxShadow: [
-              BoxShadow(
-                color: AppPalette.xpGold.withValues(alpha: 0.5),
-                blurRadius: 4,
-              ),
-            ],
-          ),
+    Color bg = AppPalette.purple.withValues(alpha: 0.05);
+    Color borderColor = AppPalette.purple.withValues(alpha: 0.10);
+    Color text = AppPalette.textDim;
+    BoxBorder? border = Border.all(color: borderColor, width: 1);
+    BoxShadow? glow;
+
+    switch (spec.kind) {
+      case _DayKind.completed:
+        bg = AppPalette.amber.withValues(alpha: 0.55);
+        borderColor = AppPalette.amber.withValues(alpha: 0.60);
+        border = Border.all(color: borderColor, width: 1);
+        text = AppPalette.voidBg;
+        break;
+      case _DayKind.frozen:
+        bg = AppPalette.teal.withValues(alpha: 0.20);
+        borderColor = AppPalette.teal.withValues(alpha: 0.55);
+        border = Border.all(color: borderColor, width: 1);
+        text = AppPalette.teal;
+        break;
+      case _DayKind.missed:
+        bg = AppPalette.streak.withValues(alpha: 0.12);
+        borderColor = AppPalette.streak.withValues(alpha: 0.40);
+        border = Border.all(
+          color: borderColor,
+          width: 1,
+          style: BorderStyle.solid,
         );
-      case _DayType.rest:
-        return Container(
-          decoration: base.copyWith(
-            color: AppPalette.purple.withValues(alpha: 0.07),
-            border: Border.all(color: AppPalette.purple),
-          ),
+        text = AppPalette.streak;
+        break;
+      case _DayKind.today:
+        bg = AppPalette.purple.withValues(alpha: 0.15);
+        borderColor = AppPalette.purple.withValues(alpha: 0.60);
+        border = Border.all(color: borderColor, width: 2);
+        text = AppPalette.purpleSoft;
+        glow = BoxShadow(
+          color: AppPalette.purple.withValues(alpha: 0.55),
+          blurRadius: 12,
         );
-      case _DayType.miss:
-        return Container(
-          decoration: base.copyWith(
-            color: AppPalette.carbon,
-            border: Border.all(color: AppPalette.strokeHairline),
-          ),
-        );
-      case _DayType.today:
-        return Container(
-          decoration: base.copyWith(
-            border: Border.all(color: AppPalette.teal, width: 2),
-            boxShadow: [
-              BoxShadow(color: AppPalette.teal, blurRadius: 10),
-            ],
-          ),
-        );
-      case _DayType.future:
-        return const SizedBox.shrink();
+        break;
+      case _DayKind.future:
+        text = AppPalette.textDim;
+        break;
+      case _DayKind.rest:
+        text = AppPalette.textMuted;
+        break;
     }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: bg,
+        border: border,
+        boxShadow: glow != null ? [glow] : null,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '${spec.day}',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: text,
+        ),
+      ),
+    );
   }
 }
 
-class _Legend extends StatelessWidget {
-  const _Legend({
-    required this.color,
-    required this.label,
-    this.borderColor,
-  });
-
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label});
   final Color color;
-  final Color? borderColor;
   final String label;
 
   @override
@@ -454,19 +665,20 @@ class _Legend extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 12,
-          height: 12,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
             color: color,
-            borderRadius: BorderRadius.circular(3),
-            border: borderColor != null ? Border.all(color: borderColor!) : null,
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
         Text(
           label,
-          style:
-              AppType.label(color: AppPalette.textMuted).copyWith(fontSize: 9),
+          style: const TextStyle(
+            fontSize: 10,
+            color: AppPalette.textMuted,
+          ),
         ),
       ],
     );

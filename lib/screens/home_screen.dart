@@ -53,7 +53,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<model.Quest>> _loadDailyQuests() async {
+    // Daily rotation runs every Home mount; weekly + boss are also
+    // refreshed here so a user landing on Home Monday morning gets a
+    // fresh weekly batch and any never-seeded boss rows show up.
     await QuestEngine.rotateDailyIfNeeded();
+    await QuestEngine.rotateWeeklyIfNeeded();
+    await QuestEngine.seedBossesIfNeeded();
     return QuestService.issuedSince('daily', QuestEngine.todayEpoch());
   }
 

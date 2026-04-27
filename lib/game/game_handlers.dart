@@ -30,11 +30,18 @@ class GameHandlers {
     final sets = await SetsService.forWorkout(workoutId);
 
     // Max baseXp across the workout — used by QuestEngine to tell if the
-    // session included a compound lift (baseXp >= 5 per PRD §12).
+    // session included a compound lift (baseXp >= 5 per PRD §12). Also
+    // surface PR count + heaviest single set so weekly/boss kinds can
+    // make their progress decisions.
     var maxBaseXp = 0;
+    var prCount = 0;
+    var maxSetWeight = 0.0;
     for (final s in sets) {
       final ex = await ExerciseService.byId(s.exerciseId);
       if (ex != null && ex.baseXp > maxBaseXp) maxBaseXp = ex.baseXp;
+      if (s.isPr) prCount += 1;
+      final w = s.weightKg ?? 0;
+      if (w > maxSetWeight) maxSetWeight = w;
     }
 
     // Engines fire in dependency order: rank uses the just-committed sets;
@@ -45,6 +52,8 @@ class GameHandlers {
       workout: workout,
       setsInWorkout: sets.length,
       maxBaseXpInWorkout: maxBaseXp,
+      prsThisWorkout: prCount,
+      maxSetWeightKg: maxSetWeight,
     );
 
     // Fold quest XP into the current workout row so `WorkoutService.totalXp`

@@ -1,58 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../data/models/muscle_rank.dart';
 import '../data/models/streak.dart';
-import '../data/services/muscle_rank_service.dart';
+import '../data/services/player_service.dart';
 import '../data/services/streak_service.dart';
 import '../data/services/workout_service.dart';
-import '../game/rank_engine.dart';
+import '../state/onboarding_flag.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/in_app_shell.dart';
-import '../widgets/neon_card.dart';
-import '../widgets/pills.dart';
-import '../widgets/placeholder_block.dart';
 import '../widgets/progress_bar.dart';
-import '../widgets/rank_badge.dart';
 import '../widgets/tab_bar.dart';
 
-/// Row data for the Muscle Ranks list — derived from `muscle_ranks` at
-/// build time. Muscles the user hasn't trained yet default to Bronze I / 0%.
-class _MuscleRow {
-  const _MuscleRow({
-    required this.key,
-    required this.name,
-    required this.rank,
-    required this.sub,
-    required this.pct,
-  });
-  final String key;
-  final String name;
-  final Rank rank;
-  final String sub;
-  final double pct;
+/// Profile — matches design v2 (`design/v2/screens-progress.jsx`
+/// `ProfileScreen`).
+///
+/// Layout (top → bottom):
+///   • Centered "Profile" small title.
+///   • Header card: hero avatar + name + email + edit icon, LV/XP pill row,
+///     amber "Progress to Level N" bar with start/target XP labels, "PRO
+///     MEMBER" amber pill (only when subscription says so).
+///   • Player Class card — amber-bordered with dumbbell icon, MASS BUILDER
+///     headline, descriptor.
+///   • BODY STATS section: Age / Height / BMI / Weight rows in a card.
+///   • Menu list: Muscle Rankings, Edit Onboarding, Notifications,
+///     Subscription, Sign Out (red).
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileBundle {
   const _ProfileBundle({
     required this.workoutCount,
     required this.streak,
-    required this.muscles,
   });
   final int workoutCount;
   final Streak? streak;
-  final List<_MuscleRow> muscles;
-}
-
-String _titleCase(String s) =>
-    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
-
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
-
-  @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
@@ -68,42 +55,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final results = await Future.wait([
       WorkoutService.totalFinished(),
       StreakService.get(),
-      MuscleRankService.getAll(),
     ]);
-    final workoutCount = results[0] as int;
-    final streak = results[1] as Streak?;
-    final ranks = results[2] as List<MuscleRank>;
-
-    final byMuscle = {for (final r in ranks) r.muscle: r};
-    final rows = <_MuscleRow>[
-      for (final m in RankEngine.trackedMuscles)
-        _buildRow(m, byMuscle[m]),
-    ];
     return _ProfileBundle(
-      workoutCount: workoutCount,
-      streak: streak,
-      muscles: rows,
+      workoutCount: results[0] as int,
+      streak: results[1] as Streak?,
     );
   }
 
-  _MuscleRow _buildRow(String key, MuscleRank? mr) {
-    if (mr == null) {
-      return _MuscleRow(
-        key: key,
-        name: key.toUpperCase(),
-        rank: Rank.bronze,
-        sub: 'I',
-        pct: 0,
-      );
-    }
-    final assignment = RankEngine.assign(mr.rankXp);
-    return _MuscleRow(
-      key: key,
-      name: key.toUpperCase(),
-      rank: rankFromString(assignment.rank),
-      sub: assignment.subRank ?? '',
-      pct: RankEngine.progressInTier(mr.rankXp),
+  Future<void> _signOut() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppPalette.bgCard,
+        title: const Text(
+          'Sign out and wipe data?',
+          style: TextStyle(color: AppPalette.textPrimary),
+        ),
+        content: const Text(
+          'This deletes the player profile, every workout, every set, and resets onboarding. The exercise catalog stays.',
+          style: TextStyle(color: AppPalette.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL',
+                style: TextStyle(color: AppPalette.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('SIGN OUT',
+                style: TextStyle(color: AppPalette.danger)),
+          ),
+        ],
+      ),
     );
+    if (ok != true) return;
+    await PlayerService.deleteAll();
+    isOnboardedNotifier.value = false;
+    if (!mounted) return;
+    await context.read<PlayerState>().refresh();
+    if (!mounted) return;
+    context.go('/');
   }
 
   @override
@@ -112,66 +104,224 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InAppShell(
       active: AppTab.profile,
       title: 'PROFILE',
+      showHeader: false,
       child: FutureBuilder<_ProfileBundle>(
         future: _future,
         builder: (ctx, snap) {
-          final bundle = snap.data;
           return ListView(
-            padding: const EdgeInsets.all(AppSpace.s5),
+            padding: EdgeInsets.fromLTRB(
+              0,
+              0,
+              0,
+              InAppShell.tabBarSafeBottom +
+                  MediaQuery.of(context).padding.bottom,
+            ),
             children: [
-              _PlayerClassCard(
-                level: s.level,
-                xpCurrent: s.xpCurrent,
-                xpMax: s.xpMax,
-                playerName: s.playerName,
-              ),
-              const SizedBox(height: AppSpace.s4),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatTile(
-                      label: 'TOTAL XP',
-                      value: _formatInt(s.totalXp),
-                      color: AppPalette.xpGold,
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Center(
+                  child: Text(
+                    'Profile',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppPalette.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: AppSpace.s3),
-                  Expanded(
-                    child: _StatTile(
-                      label: 'WORKOUTS',
-                      value: '${bundle?.workoutCount ?? 0}',
-                      color: AppPalette.purple,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.s3),
-                  Expanded(
-                    child: _StatTile(
-                      label: 'BEST STREAK',
-                      value: '${bundle?.streak?.longest ?? 0}',
-                      color: AppPalette.flame,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: AppSpace.s4),
-
-              Text(
-                'MUSCLE RANKS',
-                style: AppType.label(color: AppPalette.textMuted),
+              // Header card.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _HeaderCard(state: s),
               ),
-              const SizedBox(height: AppSpace.s3),
-              _MuscleRanksCard(rows: bundle?.muscles ?? const []),
+              // Player Class card.
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: _PlayerClassCard(),
+              ),
+              // Body Stats.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: _BodyStatsSection(state: s),
+              ),
+              // Menu list.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: _MenuList(onSignOut: _signOut),
+              ),
             ],
           );
         },
       ),
     );
   }
+}
 
-  static String _formatInt(int n) {
-    // Thousands separator without bringing in intl — the profile screen is
-    // the only place we show large numbers.
+// ─── Header card ───────────────────────────────────────────
+class _HeaderCard extends StatelessWidget {
+  const _HeaderCard({required this.state});
+  final PlayerState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final levelPct = state.xpMax == 0
+        ? 0.0
+        : (state.xpCurrent / state.xpMax).clamp(0.0, 1.0) * 100;
+    return _PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const _ProfileAvatar(size: 64),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      state.playerName.isEmpty ? 'Player' : state.playerName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppPalette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'local profile',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppPalette.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _SmallIconButton(
+                icon: Icons.edit_outlined,
+                onTap: () => GoRouter.of(context).go('/register'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // LV / XP pill row.
+          Row(
+            children: [
+              _PillChip(
+                tint: AppPalette.amber,
+                child: Text(
+                  'LV ${state.level}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'BebasNeue',
+                    letterSpacing: 1,
+                    color: AppPalette.amber,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              _PillChip(
+                tint: AppPalette.purple,
+                child: Text(
+                  '${_format(state.totalXp)} XP',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'BebasNeue',
+                    letterSpacing: 0.5,
+                    color: AppPalette.purpleSoft,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Progress bar.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Progress to Level ${state.level + 1}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppPalette.textMuted,
+                ),
+              ),
+              Text(
+                '${levelPct.round()}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'JetBrainsMono',
+                  color: AppPalette.amber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          XpBar(percent: levelPct, height: 8),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${state.xpCurrent} XP',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontFamily: 'JetBrainsMono',
+                  color: AppPalette.textDim,
+                ),
+              ),
+              Text(
+                '${state.xpMax} XP',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontFamily: 'JetBrainsMono',
+                  color: AppPalette.textDim,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // PRO MEMBER pill (always visible until SubscriptionService is wired).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                color: AppPalette.amber.withValues(alpha: 0.15),
+                border: Border.all(
+                  color: AppPalette.amber.withValues(alpha: 0.40),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield_outlined,
+                      size: 11, color: AppPalette.amber),
+                  const SizedBox(width: 6),
+                  Text(
+                    'PRO MEMBER',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                      color: AppPalette.amber,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _format(int n) {
     final s = n.toString();
     final buf = StringBuffer();
     for (var i = 0; i < s.length; i++) {
@@ -183,274 +333,549 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+// ─── Player Class card (amber-bordered) ────────────────────
 class _PlayerClassCard extends StatelessWidget {
-  const _PlayerClassCard({
-    required this.level,
-    required this.xpCurrent,
-    required this.xpMax,
-    required this.playerName,
-  });
-
-  final int level;
-  final int xpCurrent;
-  final int xpMax;
-  final String playerName;
-
-  @override
-  Widget build(BuildContext context) {
-    return NeonCard(
-      glow: GlowColor.xp,
-      padding: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: AspectRatio(
-        aspectRatio: 4 / 3,
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0, -0.4),
-                    radius: 1.4,
-                    colors: [
-                      Color(0x33F5A623),
-                      AppPalette.carbon,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const Positioned.fill(
-              child: PlaceholderBlock(
-                label: 'IRON WARRIOR ART',
-                height: 999,
-                color: AppPalette.xpGold,
-                border: false,
-                borderRadius: BorderRadius.zero,
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      AppPalette.carbon.withValues(alpha: 0.95),
-                    ],
-                    stops: const [0.4, 1.0],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              left: 12,
-              child: Row(
-                children: [
-                  LevelPill(level: level),
-                  const SizedBox(width: AppSpace.s3),
-                  XPPill(xp: xpCurrent, max: xpMax),
-                ],
-              ),
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: AppPalette.carbon,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(color: AppPalette.xpGold),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppPalette.xpGold.withValues(alpha: 0.53),
-                          blurRadius: 16,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.shield_moon_outlined,
-                      color: AppPalette.xpGold,
-                      size: 36,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.s4),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'PLAYER',
-                          style:
-                              AppType.label(color: AppPalette.xpGold),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _titleCase(playerName),
-                          style: AppType.displayLG(
-                            color: AppPalette.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Level $level · $xpCurrent / $xpMax XP',
-                          style: AppType.bodySM(
-                            color: AppPalette.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MuscleRanksCard extends StatelessWidget {
-  const _MuscleRanksCard({required this.rows});
-  final List<_MuscleRow> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      // Still loading — render a spaced empty card to avoid layout jump.
-      return NeonCard(
-        glow: GlowColor.none,
-        padding: const EdgeInsets.all(AppSpace.s5),
-        pulse: false,
-        child: Text(
-          'No muscle data yet — log your first workout.',
-          style: AppType.bodySM(color: AppPalette.textMuted),
-        ),
-      );
-    }
-    return NeonCard(
-      glow: GlowColor.none,
-      padding: EdgeInsets.zero,
-      pulse: false,
-      child: Column(
-        children: List.generate(rows.length, (i) {
-          final m = rows[i];
-          final last = i == rows.length - 1;
-          return Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: last
-                      ? Colors.transparent
-                      : AppPalette.strokeHairline,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                RankBadge(
-                  rank: m.rank,
-                  subRank: m.sub.isEmpty ? 'I' : m.sub,
-                  size: 36,
-                ),
-                const SizedBox(width: AppSpace.s4),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            m.name,
-                            style: AppType.label(
-                              color: AppPalette.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            m.sub.isEmpty
-                                ? m.rank.name.toUpperCase()
-                                : '${m.rank.name.toUpperCase()} ${m.sub}',
-                            style: AppType.monoMD(
-                              color: AppPalette.textMuted,
-                            ).copyWith(fontSize: 11),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Bar(
-                        percent: (m.pct * 100).clamp(0, 100).toDouble(),
-                        color: rankBarColor(m.rank),
-                        height: 4,
-                        glowOn: false,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
+  const _PlayerClassCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppSpace.s4),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppPalette.carbon,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppPalette.strokeHairline),
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppPalette.amber.withValues(alpha: 0.15),
+            AppPalette.purple.withValues(alpha: 0.10),
+          ],
+        ),
+        border: Border.all(
+          color: AppPalette.amber.withValues(alpha: 0.45),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.amber.withValues(alpha: 0.25),
+            blurRadius: 24,
+            spreadRadius: -4,
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            label,
-            style: AppType.label(color: AppPalette.textMuted).copyWith(
-              fontSize: 9,
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppPalette.amber.withValues(alpha: 0.30),
+                  AppPalette.purple.withValues(alpha: 0.15),
+                ],
+              ),
+              border: Border.all(
+                color: AppPalette.amber.withValues(alpha: 0.50),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppPalette.amber.withValues(alpha: 0.30),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.fitness_center,
+              size: 38,
+              color: AppPalette.amber,
             ),
           ),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: AppType.monoLG(color: color).copyWith(fontSize: 20),
-              maxLines: 1,
-              softWrap: false,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PLAYER CLASS',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                    color: AppPalette.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'MASS BUILDER',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontFamily: 'BebasNeue',
+                    height: 1,
+                    letterSpacing: 1,
+                    color: AppPalette.amber,
+                    shadows: [
+                      Shadow(
+                        color: AppPalette.amber.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Building size through volume and dedication.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppPalette.textMuted,
+                  ),
+                ),
+              ],
             ),
+          ),
+          Icon(Icons.chevron_right, size: 18, color: AppPalette.textMuted),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Body Stats section ────────────────────────────────────
+class _BodyStatsSection extends StatelessWidget {
+  const _BodyStatsSection({required this.state});
+  final PlayerState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = state.player;
+    final age = (p != null && p.age > 0) ? '${p.age} years' : '—';
+    final height =
+        (p != null && p.heightCm > 0) ? '${p.heightCm.round()} cm' : '—';
+    final weight = (p != null && p.weightKg > 0)
+        ? '${p.weightKg.toStringAsFixed(1)} kg'
+        : '—';
+    final bmi = (p != null && p.heightCm > 0 && p.weightKg > 0)
+        ? _bmi(p.weightKg, p.heightCm)
+        : '—';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'BODY STATS',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: AppPalette.textMuted,
+            ),
+          ),
+        ),
+        _PanelCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              _StatRow(
+                label: 'Age',
+                value: age,
+                icon: Icons.person_outline,
+              ),
+              _StatRow(
+                label: 'Height',
+                value: height,
+                icon: Icons.straighten,
+              ),
+              _StatRow(
+                label: 'BMI',
+                value: bmi,
+                icon: Icons.gps_fixed,
+              ),
+              _StatRow(
+                label: 'Weight',
+                value: weight,
+                icon: Icons.scale,
+                onTap: () => GoRouter.of(context).go('/weight'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _bmi(double weightKg, double heightCm) {
+    final hM = heightCm / 100;
+    final v = weightKg / (hM * hM);
+    final tier = v < 18.5
+        ? 'Underweight'
+        : v < 25
+            ? 'Normal'
+            : v < 30
+                ? 'Overweight'
+                : 'Obese';
+    return '${v.toStringAsFixed(1)} ($tier)';
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDivider = label != 'Age';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            border: hasDivider
+                ? Border(
+                    top: BorderSide(
+                      color: AppPalette.purple.withValues(alpha: 0.08),
+                      width: 1,
+                    ),
+                  )
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppPalette.purple.withValues(alpha: 0.12),
+                ),
+                child: Icon(
+                  icon,
+                  size: 14,
+                  color: AppPalette.purpleSoft,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppPalette.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppPalette.textMuted,
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right,
+                    size: 14, color: AppPalette.textDim),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Menu list ─────────────────────────────────────────────
+class _MenuList extends StatelessWidget {
+  const _MenuList({required this.onSignOut});
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PanelCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          _MenuRow(
+            label: 'Muscle Rankings',
+            icon: Icons.emoji_events_outlined,
+            onTap: () {},
+          ),
+          _MenuRow(
+            label: 'Edit Onboarding',
+            icon: Icons.edit_outlined,
+            onTap: () => GoRouter.of(context).go('/training-days'),
+          ),
+          _MenuRow(
+            label: 'Notifications',
+            icon: Icons.notifications_outlined,
+            onTap: () => GoRouter.of(context).go('/notification-prefs'),
+          ),
+          _MenuRow(
+            label: 'Subscription',
+            icon: Icons.shield_outlined,
+            onTap: () => GoRouter.of(context).go('/paywall'),
+          ),
+          _MenuRow(
+            label: 'Sign Out',
+            icon: Icons.logout,
+            danger: true,
+            onTap: onSignOut,
           ),
         ],
       ),
     );
   }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? AppPalette.streak : AppPalette.textPrimary;
+    final iconColor = danger ? AppPalette.streak : AppPalette.purpleSoft;
+    final iconBg = danger
+        ? AppPalette.streak.withValues(alpha: 0.12)
+        : AppPalette.purple.withValues(alpha: 0.12);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            border: label == 'Muscle Rankings'
+                ? null
+                : Border(
+                    top: BorderSide(
+                      color: AppPalette.purple.withValues(alpha: 0.08),
+                      width: 1,
+                    ),
+                  ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: iconBg,
+                ),
+                child: Icon(icon, size: 14, color: iconColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: color,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right,
+                  size: 14, color: AppPalette.textDim),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Shared mini widgets ───────────────────────────────────
+class _PanelCard extends StatelessWidget {
+  const _PanelCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xE61A0F2B), Color(0xE6120A1F)],
+        ),
+        border: Border.all(
+          color: AppPalette.borderViolet,
+          width: 1,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _PillChip extends StatelessWidget {
+  const _PillChip({required this.tint, required this.child});
+  final Color tint;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: tint.withValues(alpha: 0.15),
+        border: Border.all(
+          color: tint.withValues(alpha: 0.35),
+          width: 1,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _SmallIconButton extends StatelessWidget {
+  const _SmallIconButton({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: AppPalette.purple.withValues(alpha: 0.12),
+            border: Border.all(
+              color: AppPalette.purple.withValues(alpha: 0.25),
+              width: 1,
+            ),
+          ),
+          child: Icon(icon, size: 16, color: AppPalette.purpleSoft),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2D1B4E), Color(0xFF1A0F2B)],
+        ),
+        border: Border.all(
+          color: AppPalette.purple.withValues(alpha: 0.5),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.purple.withValues(alpha: 0.3),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: CustomPaint(painter: _AvatarFacePainter()),
+      ),
+    );
+  }
+}
+
+class _AvatarFacePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    final facePaint = Paint()..color = const Color(0xD9F0D5B8);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.5, h * 0.62),
+        width: w * 0.55,
+        height: h * 0.62,
+      ),
+      facePaint,
+    );
+
+    final hairPaint = Paint()..color = const Color(0xFF1A0F2B);
+    final hair = Path()
+      ..moveTo(w * 0.18, h * 0.45)
+      ..quadraticBezierTo(w * 0.18, h * 0.10, w * 0.5, h * 0.08)
+      ..quadraticBezierTo(w * 0.82, h * 0.10, w * 0.82, h * 0.45)
+      ..lineTo(w * 0.78, h * 0.40)
+      ..lineTo(w * 0.70, h * 0.50)
+      ..lineTo(w * 0.62, h * 0.42)
+      ..lineTo(w * 0.50, h * 0.50)
+      ..lineTo(w * 0.40, h * 0.42)
+      ..lineTo(w * 0.32, h * 0.50)
+      ..lineTo(w * 0.22, h * 0.40)
+      ..close();
+    canvas.drawPath(hair, hairPaint);
+
+    final eyePaint = Paint()..color = AppPalette.purple;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.40, h * 0.62),
+        width: w * 0.08,
+        height: h * 0.10,
+      ),
+      eyePaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(w * 0.60, h * 0.62),
+        width: w * 0.08,
+        height: h * 0.10,
+      ),
+      eyePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AvatarFacePainter oldDelegate) => false;
 }
