@@ -627,54 +627,59 @@ class _VolumeBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ratio = maxVolume == 0 ? 0.0 : volumeKg / maxVolume;
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final barHeight = (constraints.maxHeight * ratio).clamp(2.0, constraints.maxHeight);
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              volumeKg == 0
-                  ? '—'
-                  : '${(volumeKg / 1).round()}',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'JetBrainsMono',
-                color: isCurrent ? AppPalette.purpleSoft : AppPalette.textMuted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                height: barHeight,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: isCurrent
-                        ? const [AppPalette.purple, AppPalette.purpleSoft]
-                        : [
-                            AppPalette.purple.withValues(alpha: 0.40),
-                            AppPalette.purple.withValues(alpha: 0.20),
-                          ],
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          volumeKg == 0 ? '—' : '${volumeKg.round()}',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'JetBrainsMono',
+            color: isCurrent ? AppPalette.purpleSoft : AppPalette.textMuted,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Bar takes only the space remaining after the label + gap so
+        // the tallest bar (ratio == 1) doesn't overflow the parent.
+        Expanded(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: FractionallySizedBox(
+              heightFactor: volumeKg == 0
+                  ? 0.0
+                  : ratio.clamp(0.04, 1.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: isCurrent
+                          ? const [AppPalette.purple, AppPalette.purpleSoft]
+                          : [
+                              AppPalette.purple.withValues(alpha: 0.40),
+                              AppPalette.purple.withValues(alpha: 0.20),
+                            ],
+                    ),
+                    boxShadow: isCurrent
+                        ? [
+                            BoxShadow(
+                              color: AppPalette.purple.withValues(alpha: 0.45),
+                              blurRadius: 10,
+                            ),
+                          ]
+                        : null,
                   ),
-                  boxShadow: isCurrent
-                      ? [
-                          BoxShadow(
-                            color: AppPalette.purple.withValues(alpha: 0.45),
-                            blurRadius: 10,
-                          ),
-                        ]
-                      : null,
                 ),
               ),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }
