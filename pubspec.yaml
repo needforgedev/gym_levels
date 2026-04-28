@@ -69,6 +69,19 @@ flutter:
     - assets/body-back.png
     - assets/body-full.png
     - assets/exercise-breakdown-figures.png
+    # Per-muscle highlight panels — one polished body PNG per muscle group.
+    # Front view: chest, shoulders, biceps, core, quads.
+    # Back view: lats, traps, triceps, glutes, hamstrings+calves.
+    - assets/muscle_images/panel_0_0.png
+    - assets/muscle_images/panel_0_1.png
+    - assets/muscle_images/panel_0_2.png
+    - assets/muscle_images/panel_0_3.png
+    - assets/muscle_images/panel_0_4.png
+    - assets/muscle_images/panel_1_0.png
+    - assets/muscle_images/panel_1_1.png
+    - assets/muscle_images/panel_1_2.png
+    - assets/muscle_images/panel_1_3.png
+    - assets/muscle_images/panel_1_4.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

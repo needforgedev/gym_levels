@@ -8,6 +8,7 @@ import '../data/schema.dart';
 import '../data/services/muscle_rank_service.dart';
 import '../game/rank_engine.dart';
 import '../theme/tokens.dart';
+import '../widgets/muscle_body.dart';
 import '../widgets/screen_base.dart';
 
 /// Per-muscle drill-down — opened from `RanksScreen` row taps. Surfaces
@@ -170,6 +171,15 @@ class _MuscleDetailScreenState extends State<MuscleDetailScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                     children: [
+                      // Hero body — panel showing exactly the muscle
+                      // the user drilled into.
+                      Center(
+                        child: SizedBox(
+                          height: 220,
+                          child: MuscleBody(muscle: widget.muscle),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       _RankHeroCard(
                         muscle: widget.muscle,
                         rankXp: bundle.rankXp,

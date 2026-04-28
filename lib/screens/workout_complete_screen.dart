@@ -9,6 +9,7 @@ import '../data/services/sets_service.dart';
 import '../data/services/workout_service.dart';
 import '../game/game_handlers.dart';
 import '../theme/tokens.dart';
+import '../widgets/muscle_body.dart';
 import '../widgets/screen_base.dart';
 
 /// Workout Complete summary screen — matches design v2
@@ -639,44 +640,7 @@ class _ExerciseBreakdownCard extends StatelessWidget {
                 width: 1,
               ),
             ),
-            child: Column(
-              children: [
-                AspectRatio(
-                  aspectRatio: 2.2,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Image.asset(
-                      'assets/body-full.png',
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: const [
-                    Text(
-                      'FRONT',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
-                        color: AppPalette.textMuted,
-                      ),
-                    ),
-                    Text(
-                      'BACK',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
-                        color: AppPalette.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            child: _BreakdownBodies(split: split),
           ),
           const SizedBox(height: 14),
           // Muscle intensity chips.
@@ -707,6 +671,79 @@ class _ExerciseBreakdownCard extends StatelessWidget {
           _ViewFullBreakdownButton(onTap: onViewFull),
         ],
       ),
+    );
+  }
+}
+
+/// Picks one front-view and one back-view muscle from the workout's
+/// `muscleSplit` and renders the matching panels side-by-side. If the
+/// workout only hit muscles on one side (push day → all front), the
+/// other side falls back to a neutral panel selection so the layout
+/// stays balanced; the muscle-intensity chips below the figures still
+/// carry the real per-muscle activation data.
+class _BreakdownBodies extends StatelessWidget {
+  const _BreakdownBodies({required this.split});
+
+  final List<({String muscle, int pct})> split;
+
+  @override
+  Widget build(BuildContext context) {
+    String? frontMuscle;
+    String? backMuscle;
+    for (final s in split) {
+      if (!MuscleBody.has(s.muscle)) continue;
+      final view = MuscleBody.viewFor(s.muscle);
+      if (view == BodyView.front && frontMuscle == null) {
+        frontMuscle = s.muscle;
+      } else if (view == BodyView.back && backMuscle == null) {
+        backMuscle = s.muscle;
+      }
+    }
+
+    return Column(
+      children: [
+        AspectRatio(
+          aspectRatio: 2.2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: MuscleBody(muscle: frontMuscle ?? 'core'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: MuscleBody(muscle: backMuscle ?? 'back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: const [
+            Text(
+              'FRONT',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: AppPalette.textMuted,
+              ),
+            ),
+            Text(
+              'BACK',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: AppPalette.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

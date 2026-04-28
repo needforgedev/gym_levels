@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../data/services/muscle_rank_service.dart';
 import '../game/rank_engine.dart';
 import '../theme/tokens.dart';
+import '../widgets/muscle_body.dart';
 import '../widgets/screen_base.dart';
 
 /// Muscle Rankings drill-down — matches design v2 (`screens-progress.jsx`
@@ -37,10 +38,19 @@ class _MuscleRow {
 }
 
 class _Bundle {
-  const _Bundle({required this.rows, required this.overallTier, required this.overallSub});
+  const _Bundle({
+    required this.rows,
+    required this.overallTier,
+    required this.overallSub,
+    required this.dominantMuscle,
+  });
   final List<_MuscleRow> rows;
   final String overallTier;
   final String? overallSub;
+
+  /// Highest-XP muscle — drives which panel the hero body renders.
+  /// `null` when no muscle has any rank XP yet.
+  final String? dominantMuscle;
 }
 
 class _RanksScreenState extends State<RanksScreen> {
@@ -74,10 +84,24 @@ class _RanksScreenState extends State<RanksScreen> {
     }
     final avg = (totalXp / RankEngine.trackedMuscles.length).round();
     final overall = RankEngine.assign(avg);
+
+    // Pick the strongest muscle as the hero panel target. Tied or
+    // zero-XP fallback: leave it null so the widget renders its
+    // default panel.
+    String? dominant;
+    var best = 0;
+    for (final r in rows) {
+      if (r.xp > best && MuscleBody.has(r.key)) {
+        best = r.xp;
+        dominant = r.key;
+      }
+    }
+
     return _Bundle(
       rows: rows,
       overallTier: overall.rank,
       overallSub: overall.subRank,
+      dominantMuscle: dominant,
     );
   }
 
@@ -122,8 +146,14 @@ class _RanksScreenState extends State<RanksScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                     children: [
-                      // Hero body silhouette with violet halo.
-                      Center(child: _HeroBody()),
+                      // Hero body — panel highlighting the player's
+                      // strongest muscle (front or back view depending
+                      // on which side the muscle lives on).
+                      Center(
+                        child: _HeroBody(
+                          dominantMuscle: bundle?.dominantMuscle,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Center(child: _OverallBadge(bundle: bundle)),
                       const SizedBox(height: 18),
@@ -210,11 +240,14 @@ class _Header extends StatelessWidget {
 
 // ─── Hero body silhouette with halo ────────────────────────
 class _HeroBody extends StatelessWidget {
+  const _HeroBody({this.dominantMuscle});
+  final String? dominantMuscle;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 220,
-      height: 220,
+      width: 240,
+      height: 260,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -233,12 +266,8 @@ class _HeroBody extends StatelessWidget {
               ),
             ),
           ),
-          // Painted muscle figure (front view, purple highlights).
-          Image.asset(
-            'assets/body-front.png',
-            fit: BoxFit.contain,
-            height: 200,
-          ),
+          // Polished panel for the player's strongest muscle.
+          MuscleBody(muscle: dominantMuscle, fit: BoxFit.contain),
         ],
       ),
     );
