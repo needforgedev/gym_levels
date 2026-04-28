@@ -38,20 +38,20 @@ class MuscleBody extends StatelessWidget {
   /// `calves` share `panel_1_4` because the artist shipped a single
   /// lower-leg panel that highlights both groups together.
   static const Map<String, String> _panels = {
-    'chest':      'assets/muscle_images/panel_0_0.png',
-    'shoulders':  'assets/muscle_images/panel_0_1.png',
-    'biceps':     'assets/muscle_images/panel_0_2.png',
-    'core':       'assets/muscle_images/panel_0_3.png',
-    'quads':      'assets/muscle_images/panel_0_4.png',
-    'back':       'assets/muscle_images/panel_1_0.png',
-    'traps':      'assets/muscle_images/panel_1_1.png',
-    'triceps':    'assets/muscle_images/panel_1_2.png',
-    'glutes':     'assets/muscle_images/panel_1_3.png',
-    'hamstrings': 'assets/muscle_images/panel_1_4.png',
-    'calves':     'assets/muscle_images/panel_1_4.png',
+    'chest':      'assets/muscle_images/panel_0_0.jpeg',
+    'shoulders':  'assets/muscle_images/panel_0_1.jpeg',
+    'biceps':     'assets/muscle_images/panel_0_2.jpeg',
+    'core':       'assets/muscle_images/panel_0_3.jpeg',
+    'quads':      'assets/muscle_images/panel_0_4.jpeg',
+    'back':       'assets/muscle_images/panel_1_0.jpeg',
+    'traps':      'assets/muscle_images/panel_1_1.jpeg',
+    'triceps':    'assets/muscle_images/panel_1_2.jpeg',
+    'glutes':     'assets/muscle_images/panel_1_3.jpeg',
+    'hamstrings': 'assets/muscle_images/panel_1_4.jpeg',
+    'calves':     'assets/muscle_images/panel_1_4.jpeg',
   };
 
-  static const String _fallback = 'assets/muscle_images/panel_0_0.png';
+  static const String _fallback = 'assets/muscle_images/panel_0_0.jpeg';
 
   /// Which body view a given muscle's panel lives on. Lets callers that
   /// render front+back side-by-side pick a different dominant muscle
