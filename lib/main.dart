@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'data/app_db.dart';
 import 'data/services/player_service.dart';
+import 'data/supabase/supabase_client.dart';
 import 'router.dart';
 import 'state/onboarding_flag.dart';
 import 'state/player_state.dart';
@@ -18,8 +19,15 @@ void main() async {
       statusBarBrightness: Brightness.dark,
     ),
   );
-  // Open the offline-first SQLite database. PRD §11.1 — source of truth.
+  // Open the offline-first SQLite database. PRD §11.1 — source of truth
+  // for every read on the device. Supabase is a separate, opt-in mirror
+  // for socials + Scope B sync (see socials_plan.md).
   await AppDb.init();
+
+  // Initialize Supabase (auth + Scope B sync backend) if `.env` is
+  // present. Safe to call when `.env` is missing — degrades to
+  // anonymous offline-only mode without throwing.
+  await SupabaseConfig.initialize();
 
   // Decide whether to resume at /home or start from Welcome. Read once,
   // synchronously before first paint, so the router's `redirect` has the

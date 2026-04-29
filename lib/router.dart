@@ -2,6 +2,13 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/age_screen.dart';
 import 'state/onboarding_flag.dart';
+import 'screens/auth/forgot_password_screen.dart';
+import 'screens/auth/phone_screen.dart';
+import 'screens/auth/reset_password_screen.dart';
+import 'screens/auth/sign_in_screen.dart';
+import 'screens/auth/sign_up_screen.dart';
+import 'screens/auth/username_screen.dart';
+import 'screens/auth/verify_email_screen.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
 import 'screens/boss_completion_screen.dart';
@@ -88,8 +95,30 @@ final appRouter = GoRouter(
       builder: (_, _) => const ProgressionHypeScreen(),
     ),
 
-    // Section 1 — Player Registration
+    // Auth (Phase 4.1a S1) — pre-onboarding gate. Sign Up at install
+    // (Path A) per socials_plan.md §6. /signin available from the
+    // sign-up screen for users on a new device.
+    GoRoute(path: '/signup', builder: (_, _) => const SignUpScreen()),
+    GoRoute(path: '/signin', builder: (_, _) => const SignInScreen()),
+    GoRoute(
+      path: '/verify-email',
+      builder: (_, _) => const VerifyEmailScreen(),
+    ),
+    GoRoute(
+      path: '/forgot-password',
+      builder: (_, _) => const ForgotPasswordScreen(),
+    ),
+    GoRoute(
+      path: '/reset-password',
+      builder: (_, _) => const ResetPasswordScreen(),
+    ),
+
+    // Section 1 — Player Registration (display name → local sqflite)
+    // followed by socials S2 (cloud handle + phone) before flowing into
+    // the rest of the local-only onboarding chain.
     GoRoute(path: '/register', builder: (_, _) => const RegistrationScreen()),
+    GoRoute(path: '/username', builder: (_, _) => const UsernameScreen()),
+    GoRoute(path: '/phone', builder: (_, _) => const PhoneScreen()),
     GoRoute(path: '/age', builder: (_, _) => const AgeScreen()),
     GoRoute(path: '/height', builder: (_, _) => const HeightScreen()),
 

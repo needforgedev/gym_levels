@@ -14,7 +14,8 @@ import '../widgets/screen_base.dart';
 ///
 /// Top-right `Skip` link, dot indicator above the CTA. CTA reads
 /// `Continue` on slide 0 and `Level Up IRL →` on slide 1; tapping it on
-/// the second slide advances to `/register`.
+/// the second slide advances to `/signup` (auth-gate per socials_plan
+/// Path A — every user gets a cloud account on day one).
 class RanksHypeScreen extends StatefulWidget {
   const RanksHypeScreen({super.key});
 
@@ -40,11 +41,11 @@ class _RanksHypeScreenState extends State<RanksHypeScreen> {
         curve: Curves.easeOutCubic,
       );
     } else {
-      context.go('/register');
+      context.go('/signup');
     }
   }
 
-  void _skip() => context.go('/register');
+  void _skip() => context.go('/signup');
 
   @override
   Widget build(BuildContext context) {

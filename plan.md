@@ -3,7 +3,8 @@
 **Companion to:** [PRD_GamifiedFitnessApp.md](PRD_GamifiedFitnessApp.md) (v1.2)
 **Design system:** [DesignSystem_LevelUpIRL.md](DesignSystem_LevelUpIRL.md) (v1.0)
 **Stack:** Flutter / Dart, **offline-first**, SQLite via **raw `sqflite`** (no ORM, no codegen) as source of truth.
-**Last updated:** 2026-04-27
+**Last updated:** 2026-04-29
+**Companion plans:** [socials_plan.md](socials_plan.md) — social tier (auth + friends + leaderboard) for v1.1.
 
 This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow the roadmap in PRD §16. Each phase has explicit **exit criteria** — do not start the next phase until the current phase's exit criteria are met.
 
@@ -23,7 +24,7 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 | **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.5k post-onboarding editing + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
 | **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + multi-exercise sessions + Workout Complete summary screen + §2.3 Today's Workout (profile chips + completed-today + priority-weighted plan) + §2.4 Profile real per-muscle ranks + dedicated `/ranks` drill-down **done** ✓; remaining: 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[~]` §3.1 weekly pool + rotation + §3.2 boss pool seeding + Boss Detail drill-down + §3.7 Weight Tracker (incl. log modal) + §3.8 Player Class sheet (catalog-driven) **done** ✓; remaining: Pro-gating, boss-completion celebration, settings hub, data export/import, advanced analytics, accessibility pass, store submission |
-| **4** | v1.1+ Post-MVP — cloud sync, health integrations, social, AI, web | +6 wk → +6 mo | `[—]` deferred |
+| **4** | v1.1+ Post-MVP — **socials + leaderboard + full cloud sync (Scope B, planned, see [socials_plan.md](socials_plan.md))**, health integrations, AI, web | +6 wk → +6 mo | `[~]` socials + Scope B locked (~36-44 dev days, ~8-10 wk calendar), implementation pending v1.0 ship |
 
 ---
 
@@ -632,19 +633,38 @@ PRD design-system §10.
 
 Not built in MVP. Listed for planning visibility only; do not start until v1.0 is stable for ≥4 weeks post-launch.
 
-## 4.1 v1.1 (+6 wk) — sync & integrations
-- [—] Cloud sync (introduces the first real backend; likely Supabase or Firestore)
+## 4.1 v1.1 (+8-10 wk) — socials + full cloud sync
+
+### 4.1a Socials & leaderboard + Scope B cloud sync — **planned, see [socials_plan.md](socials_plan.md)**
+
+The friends + leaderboard + full-history-sync feature set has its own scoped plan in [socials_plan.md](socials_plan.md). High-level summary so this main plan stays self-aware:
+
+- Stack addition: **Supabase** (Postgres + Auth + Realtime). First real backend the app touches.
+- Auth: **email + password** via Supabase Auth — no SMS provider required for v1.x.0.
+- Discovery: contact-match (hashed phone numbers) + invite link + username search, all shipping together.
+- **Sync surface: Scope B — full cloud sync of every domain table.** Workouts, sets, weight logs, quest progress, muscle ranks, streak data, onboarding answers, player class, public profile, friends — **everything mirrors to Supabase**. Local sqflite remains the read path (offline-first preserved); writes commit locally first, then enqueue cloud pushes via an outbox queue. Device switch restores 100% of state including full workout history.
+- Identity strategy: `cloud_id UUID` added to each synced local table; local int PKs untouched (no mass migration).
+- Conflict resolution: append-only tables are immutable post-write; mutable singletons (profile, goals, schedule, etc.) use last-write-wins via `updated_at`.
+- Leaderboard: 3 friend-only tabs (Weekly XP / Current Streak / All-time XP) with realtime "your friend just passed you" toasts.
+- Privacy: strict opt-in, granular `disconnect_socials` (purges friends, keeps cloud history) vs `delete_account` (purges everything). Server-side anti-cheat triggers (per-set volume cap, weekly-xp delta cap, streak-increment cap, total-xp monotonicity). Postgres RLS enforces per-user access on every cloud table.
+- Effort: **~36-44 dev days + 1-2 weeks App Store review buffer = ~8-10 weeks calendar**.
+- Status: plan locked + scoped, all decisions resolved (see [socials_plan.md §6](socials_plan.md)). Implementation kicks off after v1.0 launches and stabilises.
+
+### 4.1b Other v1.1 integrations
 - [—] Apple Health / Google Fit import (steps, body weight, heart rate)
-- [—] Social feed (basic, opt-in)
 - [—] Server-side receipt validation (replace client-only IAP check)
+
+### 4.1c Scope B sync (FOLDED INTO §4.1a)
+The earlier plan listed Scope B (full workout-history sync) as a separate v1.2 milestone after a Scope A-only v1.1. **Decision changed 2026-04-29: Scope B ships as part of v1.x.0 alongside socials.** The trade-off: ~+3 weeks of dev work (~5-6 weeks → ~8-10 weeks calendar to ship) in exchange for a complete device-switch experience instead of a half-restored one. See [socials_plan.md §1.2](socials_plan.md) for the full sync table.
 
 ## 4.2 v1.2 (+10 wk)
 - [—] AI form-check (upload video → feedback)
 - [—] Pro theme toggle (PRD §17 risk mitigation: "gimmicky for general audience")
 
 ## 4.3 v1.3 (+14 wk)
-- [—] Guilds / leaderboards
-- [—] Friend challenges
+- [—] Guilds (group-of-N leaderboards on top of the friend-only base from §4.1a)
+- [—] Friend challenges (head-to-head and small-group bets, builds on the friend graph + leaderboard from §4.1a)
+- [—] Social-tier polish: QR-code friend-add, friend-of-friend suggestions, per-metric privacy toggles, branded email, push notifications for social events. See [socials_plan.md §S12](socials_plan.md) for the full deferred list.
 
 ## 4.4 v2.0 (+6 mo)
 - [—] Web app
@@ -701,6 +721,21 @@ Phase 2.7 analytics flush to PostHog
 Phase 2.8 crash reporting (sentry_flutter)
     ↓
 Phase 3 polish + launch
+    ↓
+Phase 4.1a socials + Scope B full sync (v1.1) — see socials_plan.md
+    ├─ S0  Supabase backend setup (~13 cloud tables + RLS + RPCs + anti-cheat triggers)
+    ├─ S1  auth screens (email + password + verify + forgot-password)
+    ├─ S2  username + phone collection
+    ├─ S3  cloud sync engine (outbox + per-table push/pull + wire to ~10 services)
+    ├─ S3b initial-sync UX (welcome-back screen + paginated hydration + resumable)
+    ├─ S4  contact-match flow (hash + RPC + matched-friends screen)
+    ├─ S5  friend graph (request/accept/block/invite-link/handle-search)
+    ├─ S6  leaderboard screen (3 tabs + realtime subscription)
+    ├─ S7  settings + disconnect-socials + delete-account + pause-sync
+    ├─ S8  anti-cheat triggers + RLS hardening + adversarial tests
+    ├─ S9  privacy policy + App Store labels (incl. health-data disclosure)
+    └─ S10 edge cases + sync conflict resolution + offline queue + initial-sync stress tests
+   (S11 onboarding-answers sync is absorbed into S3 — onboarding tables are full-fledged synced tables under Scope B.)
 ```
 
 **Current critical path:** **Phase 2.5 local notifications** (workout reminders + streak warnings — these drive retention and have no upstream deps) or **Phase 2.6 paywall IAP** (real monetization plumbing). Both can proceed in parallel. §2.4 drill-down pages, §1.7 backup/restore, and §1.8 integration tests are lower priority because the core loop is fully playable: onboarding → plan → log → XP/rank/streak/quest updates → profile reflects real data → completed-today state gates same-day re-runs.

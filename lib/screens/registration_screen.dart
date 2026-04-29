@@ -45,7 +45,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     if (!_valid) return;
     await context.read<PlayerState>().setDisplayName(_value.trim());
     if (!mounted) return;
-    context.go('/age');
+    // Socials S2 — collect cloud handle + phone before continuing into
+    // the local-only onboarding (`/age`, `/height`, …).
+    context.go('/username');
   }
 
   @override

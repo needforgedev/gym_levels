@@ -44,3 +44,23 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 build/
+
+# Supabase / socials secrets — never commit these.
+# `.env` holds PROJECT_URL + PUBLISHABLE_KEY + PHONE_HASH_SALT and is
+# loaded by flutter_dotenv at runtime. `.env.example` IS committed and
+# shows the expected shape.
+.env
+.env.*
+!.env.example
+*.env.local
+
+# Supabase CLI scratch dir (created if/when we run `supabase start` or
+# `supabase db diff` locally). Migrations under `supabase/migrations/`
+# stay committed — they're the source of truth.
+.supabase/
+supabase/
+# Android signing artefacts. Pre-launch we'll generate a release
+# keystore; never check it in.
+*.jks
+*.keystore
+key.properties

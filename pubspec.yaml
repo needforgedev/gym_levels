@@ -41,6 +41,15 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.5
 
+  # Socials & Scope B sync (v1.1) — see socials_plan.md.
+  # supabase_flutter wraps Postgres + Auth + Realtime; flutter_dotenv
+  # loads PROJECT_URL + PUBLISHABLE_KEY + PHONE_HASH_SALT from a
+  # gitignored .env file at the repo root. crypto is used by
+  # PhoneHasher to SHA-256 the salted phone numbers before push.
+  supabase_flutter: ^2.5.0
+  flutter_dotenv: ^5.1.0
+  crypto: ^3.0.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -62,6 +71,9 @@ flutter:
   uses-material-design: true
 
   assets:
+    # Supabase config (gitignored; ships in the bundle but only loaded at
+    # runtime by flutter_dotenv on the device that has the file).
+    - .env
     - assets/hero-character.png
     - assets/hero-bust.png
     - assets/hero-small.png
