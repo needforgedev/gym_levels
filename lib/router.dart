@@ -14,6 +14,7 @@ import 'screens/auth/friends_found_screen.dart';
 import 'screens/auth/welcome_back_screen.dart';
 import 'screens/friends/friends_screen.dart';
 import 'screens/friends/username_search_screen.dart';
+import 'screens/leaderboard/leaderboard_screen.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
 import 'screens/boss_completion_screen.dart';
@@ -153,6 +154,12 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/friends/search',
       builder: (_, _) => const UsernameSearchScreen(),
+    ),
+
+    // S6 — friend-only leaderboard (3-tab metric switcher).
+    GoRoute(
+      path: '/leaderboard',
+      builder: (_, _) => const LeaderboardScreen(),
     ),
 
     // Section 1 — Player Registration (display name → local sqflite)

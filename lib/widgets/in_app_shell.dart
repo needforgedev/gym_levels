@@ -40,6 +40,8 @@ class InAppShell extends StatelessWidget {
         context.go('/home');
       case AppTab.quests:
         context.go('/quests');
+      case AppTab.leaderboard:
+        context.go('/leaderboard');
       case AppTab.streak:
         context.go('/streak');
       case AppTab.profile:

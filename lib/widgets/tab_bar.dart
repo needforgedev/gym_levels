@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/tokens.dart';
 
-enum AppTab { home, quests, streak, profile }
+enum AppTab { home, quests, leaderboard, streak, profile }
 
 /// Floating glass pill tab bar — translucent backdrop-blurred surface with
 /// a violet border, layered shadows (outer drop, violet ambient, inset
@@ -27,6 +27,7 @@ class AppTabBar extends StatelessWidget {
   static const _items = [
     (AppTab.home, Icons.home_outlined, 'Home'),
     (AppTab.quests, Icons.menu_book_outlined, 'Quests'),
+    (AppTab.leaderboard, Icons.leaderboard_outlined, 'Ranks'),
     (AppTab.streak, Icons.local_fire_department_outlined, 'Streak'),
     (AppTab.profile, Icons.emoji_events_outlined, 'Profile'),
   ];
@@ -161,7 +162,10 @@ class _TabPill extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          width: 66,
+          // Trimmed from 66 → 58 so 5 pills fit on a 375pt-wide screen
+          // (iPhone SE 3rd gen) without overflow. 5 × 58 + 20 inner +
+          // 32 outer margin = 342 ≤ 375.
+          width: 58,
           height: 54,
           decoration: BoxDecoration(
             gradient: active

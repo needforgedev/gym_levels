@@ -6,6 +6,7 @@ import '../models/streak_freeze_event.dart';
 import '../schema.dart';
 import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
+import 'leaderboard_stats_service.dart';
 
 class StreakService {
   StreakService._();
@@ -34,6 +35,9 @@ class StreakService {
     await db.insert(T.streaks, streak.toRow(),
         conflictAlgorithm: ConflictAlgorithm.replace);
     await OutboxEnqueuer.upsertSingletonByUserId(T.streaks);
+    // current/longest streak just changed — keep public_profiles in
+    // lockstep so friends' leaderboard streak column is current.
+    await LeaderboardStatsService.refresh();
   }
 
   /// PRD §9A.5 — log a freeze consumption. Caller is responsible for also

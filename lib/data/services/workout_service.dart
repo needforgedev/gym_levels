@@ -4,6 +4,7 @@ import '../models/workout.dart';
 import '../schema.dart';
 import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
+import 'leaderboard_stats_service.dart';
 import 'sync_outbox_service.dart';
 
 class WorkoutService {
@@ -39,6 +40,10 @@ class WorkoutService {
       whereArgs: [id],
     );
     await OutboxEnqueuer.upsertAutoinc(table: T.workouts, id: id);
+    // Total / weekly XP + last_active just changed — push the new
+    // public_profiles snapshot so the leaderboard reflects it. Best-
+    // effort; failure is non-fatal.
+    await LeaderboardStatsService.refresh();
   }
 
   /// Add XP on top of what was set by `finish`. Used by `GameHandlers` to
@@ -54,6 +59,7 @@ class WorkoutService {
       [extraXp, id],
     );
     await OutboxEnqueuer.upsertAutoinc(table: T.workouts, id: id);
+    await LeaderboardStatsService.refresh();
   }
 
   static Future<Workout?> byId(int id) async {
@@ -126,6 +132,28 @@ class WorkoutService {
       'SELECT COALESCE(SUM(${CWorkout.xpEarned}), 0) AS x '
       'FROM ${T.workouts} WHERE ${CWorkout.userId} = ?',
       [1],
+    );
+    return (r.first['x'] as num?)?.toInt() ?? 0;
+  }
+
+  /// XP earned since the most recent Monday 00:00 UTC. Drives the
+  /// leaderboard's Weekly XP tab + the `public_profiles.weekly_xp`
+  /// column (which the server's Monday cron resets to 0). Mirrors
+  /// the rollover semantics the cron job in 007_cron.sql uses.
+  static Future<int> weeklyXp() async {
+    final now = DateTime.now().toUtc();
+    // Monday is weekday 1 in Dart (Sun=7, Mon=1, …). Walk back to
+    // the most recent Monday at 00:00 UTC.
+    final daysSinceMonday = (now.weekday + 6) % 7; // Mon → 0, Tue → 1…
+    final monday = DateTime.utc(now.year, now.month, now.day)
+        .subtract(Duration(days: daysSinceMonday));
+    final mondayEpoch = monday.millisecondsSinceEpoch ~/ 1000;
+    final db = await AppDb.instance;
+    final r = await db.rawQuery(
+      'SELECT COALESCE(SUM(${CWorkout.xpEarned}), 0) AS x '
+      'FROM ${T.workouts} '
+      'WHERE ${CWorkout.userId} = ? AND ${CWorkout.endedAt} >= ?',
+      [1, mondayEpoch],
     );
     return (r.first['x'] as num?)?.toInt() ?? 0;
   }

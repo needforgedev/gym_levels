@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../models/sync_outbox.dart';
 import '../services/auth_service.dart';
+import '../services/leaderboard_stats_service.dart';
 import '../services/sync_outbox_service.dart';
 import '../services/sync_state_service.dart';
 import 'incremental_pull.dart';
@@ -126,6 +127,12 @@ class SyncEngine {
       try {
         await _incrementalPull.runOnce();
       } catch (_) {/* swallow — pull telemetry could land later */}
+      // Defensive: refresh public_profiles totals in case a direct
+      // call from WorkoutService.finish / StreakService.upsert was
+      // missed (e.g. cold-boot before auth resolved). Cheap.
+      try {
+        await LeaderboardStatsService.refresh();
+      } catch (_) {/* swallow */}
     } finally {
       _draining = false;
     }
