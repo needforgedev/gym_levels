@@ -6,6 +6,11 @@
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- S4 — contact-match. flutter_contacts requests the runtime
+         prompt itself; this static declaration is what Android needs
+         to allow that prompt at all. We never write to contacts. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+
     <application
         android:label="gym_levels"
         android:name="${applicationName}"

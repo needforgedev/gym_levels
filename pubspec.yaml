@@ -54,6 +54,16 @@ dependencies:
   # enqueuing pushes for rows that don't have a cloud_id yet.
   uuid: ^4.5.1
 
+  # S4 — contact-match: read the address book, hash phone numbers, send
+  # to find_users_by_phone_hashes RPC. flutter_contacts handles the
+  # native runtime-permission prompt itself; we still declare the
+  # static permission in AndroidManifest + Info.plist.
+  flutter_contacts: ^1.1.9+1
+  # share_plus — invite-link share sheet on the empty-state of the
+  # Friends Found screen. Native UIActivityViewController on iOS,
+  # Intent.ACTION_SEND on Android.
+  share_plus: ^10.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

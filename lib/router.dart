@@ -9,6 +9,8 @@ import 'screens/auth/sign_in_screen.dart';
 import 'screens/auth/sign_up_screen.dart';
 import 'screens/auth/username_screen.dart';
 import 'screens/auth/verify_email_screen.dart';
+import 'screens/auth/contacts_permission_screen.dart';
+import 'screens/auth/friends_found_screen.dart';
 import 'screens/auth/welcome_back_screen.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
@@ -119,6 +121,28 @@ final appRouter = GoRouter(
       builder: (_, _) => const WelcomeBackScreen(),
     ),
 
+    // S4 — contact-match. Inserted between /loader-pre-home and /home
+    // so fresh sign-ups land on it once at end of onboarding. Will
+    // also be reachable from Settings → "Find friends" in S7.
+    GoRoute(
+      path: '/contacts-permission',
+      builder: (_, _) => const ContactsPermissionScreen(),
+    ),
+    GoRoute(
+      path: '/friends-found',
+      builder: (ctx, state) {
+        final extra = state.extra;
+        if (extra is FriendsFoundArgs) {
+          return FriendsFoundScreen(args: extra);
+        }
+        // Deep-link / hot-restart with no payload — bounce home.
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => ctx.go('/home'),
+        );
+        return const SizedBox.shrink();
+      },
+    ),
+
     // Section 1 — Player Registration (display name → local sqflite)
     // followed by socials S2 (cloud handle + phone) before flowing into
     // the rest of the local-only onboarding chain.
@@ -216,10 +240,16 @@ final appRouter = GoRouter(
     ),
     GoRoute(path: '/paywall', builder: (_, _) => const PaywallScreen()),
 
-    // Final calibrating before Home (after paywall decision).
+    // Final calibrating before Home (after paywall decision). Routes
+    // through the S4 contact-match flow on the way — fresh sign-ups
+    // see /contacts-permission once before landing on Home. Returning
+    // users (already onboarded) get redirected to /home by the
+    // top-level redirect, skipping the calibrating screen entirely.
     GoRoute(
       path: '/loader-pre-home',
-      builder: (ctx, _) => CalibratingScreen(onDone: () => ctx.go('/home')),
+      builder: (ctx, _) => CalibratingScreen(
+        onDone: () => ctx.go('/contacts-permission'),
+      ),
     ),
 
     // In-app tabs + post-onboarding
