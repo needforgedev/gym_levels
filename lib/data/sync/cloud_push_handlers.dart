@@ -1,0 +1,516 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../app_db.dart';
+import '../models/sync_outbox.dart';
+import '../schema.dart';
+import '../services/auth_service.dart';
+import '../supabase/supabase_client.dart';
+import 'cloud_payload.dart';
+import 'push_handler.dart';
+
+/// Concrete [PushHandler] implementations for the 13 cloud-mirrored
+/// tables. Each handler decodes the local-row JSON snapshot, converts
+/// it to the shape declared by `supabase/migrations/002_schema.sql`,
+/// and calls Supabase via the PostgREST client.
+///
+/// Conventions across handlers:
+///   • The local `user_id` (always 1 in single-user v1.0) is dropped
+///     and replaced with `auth.uid()` — Supabase fills this server-
+///     side via the auth context.
+///   • The local PK `id` (int auto-increment) is dropped — the cloud
+///     side uses `cloud_id` UUIDs as the primary key.
+///   • Singletons upsert with `onConflict: 'user_id'` so two devices
+///     never produce two rows for the same user even if they generate
+///     different cloud_ids during initial sync.
+///   • Append-only tables upsert with `onConflict: 'cloud_id'` so a
+///     replayed push (transient ack failure) is idempotent.
+///   • Composite-keyed tables (muscle_ranks) upsert on `(user_id,
+///     muscle)`.
+///   • Deletes set `deleted_at = now` rather than physically removing
+///     the row — `pg_cron` purges deleted rows after 30 days.
+
+// ─────────────────────────────────────────────────────────────────
+// Base helpers
+// ─────────────────────────────────────────────────────────────────
+
+abstract class _CloudHandler extends PushHandler {
+  const _CloudHandler();
+
+  /// Local table name (sqflite). Used by the registry to dispatch.
+  @override
+  String get tableName;
+
+  /// Cloud table name (Postgres / Supabase).
+  String get cloudTable;
+
+  /// Comma-separated conflict target — `cloud_id` for append-only,
+  /// `user_id` for singletons, `user_id,muscle` for composite-keyed.
+  String get conflictTarget;
+
+  /// Translate the local-row payload to a Supabase row. Implementations
+  /// must NOT include `cloud_id` (the caller does), and should
+  /// generally avoid including `created_at` / `updated_at` (the cloud
+  /// defaults / triggers manage these).
+  Map<String, Object?> toCloudRow(
+    Map<String, Object?> localPayload,
+    String userId,
+  );
+
+  @override
+  Future<void> push(SyncOutboxRow row) async {
+    final userId = AuthService.currentUserId;
+    if (userId == null) {
+      // Engine gate already checked, but defensive — never push under
+      // an anonymous session.
+      throw StateError('Push attempted with no authenticated user.');
+    }
+
+    final client = SupabaseConfig.client;
+    final table = client.from(cloudTable);
+
+    if (row.opType == SyncOpType.delete) {
+      await _pushDelete(table, row, userId);
+      return;
+    }
+
+    final localPayload = decodePayload(row.payloadJson);
+    if (localPayload.isEmpty && row.opType == SyncOpType.upsert) {
+      throw StateError(
+        'Upsert for ${row.tableName} cloud_id=${row.cloudId} has empty payload.',
+      );
+    }
+
+    final cloudRow = await _buildCloudRow(localPayload, row, userId);
+
+    await table.upsert(cloudRow, onConflict: conflictTarget);
+  }
+
+  /// Build the final cloud row, including the standard `cloud_id` +
+  /// `user_id` fields. Subclasses override [toCloudRow] for the table-
+  /// specific shape; this wraps it.
+  Future<Map<String, Object?>> _buildCloudRow(
+    Map<String, Object?> localPayload,
+    SyncOutboxRow row,
+    String userId,
+  ) async {
+    final base = await _maybeAsyncToCloudRow(localPayload, userId);
+    return {
+      'cloud_id': row.cloudId,
+      'user_id': userId,
+      ...base,
+      // Always clear deleted_at on upsert — handles the case where a
+      // row was soft-deleted then resurrected. Cloud `updated_at` is
+      // bumped by trigger.
+      'deleted_at': null,
+    };
+  }
+
+  /// Default — subclasses with sync transforms override [toCloudRow]
+  /// directly. The `sets` handler overrides this method to inject an
+  /// async lookup (workout_id → cloud_id).
+  Future<Map<String, Object?>> _maybeAsyncToCloudRow(
+    Map<String, Object?> localPayload,
+    String userId,
+  ) async =>
+      toCloudRow(localPayload, userId);
+
+  /// Default delete — soft-delete the row matched by `cloud_id` and
+  /// `user_id` (RLS would reject it anyway, but the explicit filter is
+  /// belt-and-suspenders).
+  ///
+  /// Singletons override this since they conflict on `user_id` rather
+  /// than `cloud_id` and may not have a stable cloud_id locally.
+  Future<void> _pushDelete(
+    PostgrestQueryBuilder table,
+    SyncOutboxRow row,
+    String userId,
+  ) async {
+    await table
+        .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('cloud_id', row.cloudId)
+        .eq('user_id', userId);
+  }
+}
+
+/// Helper used by singleton handlers — soft-delete by `user_id` rather
+/// than `cloud_id` since the cloud row's PK may have been generated by
+/// a different device during initial sync.
+mixin _DeleteByUserId on _CloudHandler {
+  @override
+  Future<void> _pushDelete(
+    PostgrestQueryBuilder table,
+    SyncOutboxRow row,
+    String userId,
+  ) async {
+    await table
+        .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('user_id', userId);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Singletons (one row per user — UNIQUE(user_id))
+// ─────────────────────────────────────────────────────────────────
+
+class PlayerHandler extends _CloudHandler with _DeleteByUserId {
+  const PlayerHandler();
+  @override
+  String get tableName => T.player;
+  @override
+  String get cloudTable => 'cloud_player';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'display_name': p[CPlayer.displayName],
+        'age': p[CPlayer.age] ?? 0,
+        'height_cm': p[CPlayer.heightCm] ?? 0,
+        'weight_kg': p[CPlayer.weightKg] ?? 0,
+        'body_fat_estimate': p[CPlayer.bodyFatEstimate],
+        'units_pref': p[CPlayer.unitsPref] ?? 'metric',
+        'onboarded_at': unixSecondsToIso(p[CPlayer.onboardedAt]),
+      };
+}
+
+class GoalsHandler extends _CloudHandler with _DeleteByUserId {
+  const GoalsHandler();
+  @override
+  String get tableName => T.goals;
+  @override
+  String get cloudTable => 'cloud_goals';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'body_type': p[CGoals.bodyType],
+        'priority_muscles': jsonToStringList(p[CGoals.priorityMuscles]),
+        'reward_style': p[CGoals.rewardStyle],
+        'weight_direction': p[CGoals.weightDirection],
+        'target_weight_kg': p[CGoals.targetWeightKg],
+      };
+}
+
+class ExperienceHandler extends _CloudHandler with _DeleteByUserId {
+  const ExperienceHandler();
+  @override
+  String get tableName => T.experience;
+  @override
+  String get cloudTable => 'cloud_experience';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'tenure': p[CExperience.tenure],
+        'equipment': jsonToStringList(p[CExperience.equipment]),
+        'limitations': jsonToStringList(p[CExperience.limitations]),
+        'styles': jsonToStringList(p[CExperience.styles]),
+      };
+}
+
+class ScheduleHandler extends _CloudHandler with _DeleteByUserId {
+  const ScheduleHandler();
+  @override
+  String get tableName => T.schedule;
+  @override
+  String get cloudTable => 'cloud_schedule';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'days': jsonToIntList(p[CSchedule.days]),
+        'session_minutes': p[CSchedule.sessionMinutes],
+      };
+}
+
+class NotificationPrefsHandler extends _CloudHandler with _DeleteByUserId {
+  const NotificationPrefsHandler();
+  @override
+  String get tableName => T.notificationPrefs;
+  @override
+  String get cloudTable => 'cloud_notification_prefs';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'workout_reminders': intToBool(p[CNotificationPrefs.workoutReminders]) ?? true,
+        'streak_warnings': intToBool(p[CNotificationPrefs.streakWarnings]) ?? true,
+        'weekly_reports': intToBool(p[CNotificationPrefs.weeklyReports]) ?? true,
+      };
+}
+
+class PlayerClassHandler extends _CloudHandler with _DeleteByUserId {
+  const PlayerClassHandler();
+  @override
+  String get tableName => T.playerClass;
+  @override
+  String get cloudTable => 'cloud_player_class';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'class_key': p[CPlayerClass.classKey],
+        'assigned_at': unixSecondsToIso(p[CPlayerClass.assignedAt]),
+        'last_changed_at': unixSecondsToIso(p[CPlayerClass.lastChangedAt]),
+        'evolution_history':
+            jsonToStringList(p[CPlayerClass.evolutionHistory]),
+      };
+}
+
+class StreakHandler extends _CloudHandler with _DeleteByUserId {
+  const StreakHandler();
+  @override
+  String get tableName => T.streaks;
+  @override
+  String get cloudTable => 'cloud_streak';
+  @override
+  String get conflictTarget => 'user_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'current': p[CStreak.current] ?? 0,
+        'longest': p[CStreak.longest] ?? 0,
+        'last_active_date': unixSecondsToDate(p[CStreak.lastActiveDate]),
+        'freezes_remaining': p[CStreak.freezesRemaining] ?? 1,
+        'freezes_period_start':
+            unixSecondsToDate(p[CStreak.freezesPeriodStart]) ??
+                DateTime.now().toUtc().toIso8601String().substring(0, 10),
+      };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Append-only history (conflict on cloud_id)
+// ─────────────────────────────────────────────────────────────────
+
+class WorkoutsHandler extends _CloudHandler {
+  const WorkoutsHandler();
+  @override
+  String get tableName => T.workouts;
+  @override
+  String get cloudTable => 'cloud_workouts';
+  @override
+  String get conflictTarget => 'cloud_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'started_at': unixSecondsToIso(p[CWorkout.startedAt]),
+        'ended_at': unixSecondsToIso(p[CWorkout.endedAt]),
+        'xp_earned': p[CWorkout.xpEarned] ?? 0,
+        'volume_kg': p[CWorkout.volumeKg] ?? 0,
+        'note': p[CWorkout.note],
+      };
+}
+
+class SetsHandler extends _CloudHandler {
+  const SetsHandler();
+  @override
+  String get tableName => T.sets;
+  @override
+  String get cloudTable => 'cloud_sets';
+  @override
+  String get conflictTarget => 'cloud_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) {
+    // Real shape is built via _maybeAsyncToCloudRow below — this method
+    // returns the synchronous portion of the row. The cloud workout_id
+    // is filled in there.
+    return {
+      'exercise_id': p[CSet.exerciseId],
+      'set_number': p[CSet.setNumber],
+      'weight_kg': p[CSet.weightKg],
+      'reps': p[CSet.reps],
+      'rpe': p[CSet.rpe],
+      'is_pr': intToBool(p[CSet.isPr]) ?? false,
+      'xp_earned': p[CSet.xpEarned] ?? 0,
+      'completed_at': unixSecondsToIso(p[CSet.completedAt]),
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> _maybeAsyncToCloudRow(
+    Map<String, Object?> localPayload,
+    String userId,
+  ) async {
+    final base = toCloudRow(localPayload, userId);
+    final workoutCloudId = await _resolveWorkoutCloudId(localPayload);
+    return {
+      ...base,
+      'workout_id': workoutCloudId,
+    };
+  }
+
+  /// Translate the local int `workout_id` to the parent workout's
+  /// `cloud_id`. The local workouts row is guaranteed to have a
+  /// `cloud_id` because [WorkoutService] generates it before enqueuing
+  /// either the workout itself or its sets (see S3.3 wiring).
+  ///
+  /// Throws on missing rows / nulls — the engine catches and shelves
+  /// the row with backoff so the parent push gets a chance to land
+  /// first.
+  Future<String> _resolveWorkoutCloudId(Map<String, Object?> p) async {
+    // Caller may have pre-populated `workout_cloud_id` (S3.3 will).
+    final preFilled = p['workout_cloud_id'];
+    if (preFilled is String && preFilled.isNotEmpty) return preFilled;
+
+    final localWorkoutId = p[CSet.workoutId];
+    if (localWorkoutId is! int) {
+      throw StateError(
+        'Set payload missing local workout_id; cannot resolve cloud_id.',
+      );
+    }
+    final db = await AppDb.instance;
+    final rows = await db.query(
+      T.workouts,
+      columns: [CSync.cloudId],
+      where: '${CWorkout.id} = ?',
+      whereArgs: [localWorkoutId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError(
+        'Set push: parent workout id=$localWorkoutId not found locally.',
+      );
+    }
+    final cloudId = rows.first[CSync.cloudId];
+    if (cloudId is! String || cloudId.isEmpty) {
+      throw StateError(
+        'Set push: parent workout id=$localWorkoutId has no cloud_id yet — '
+        'will retry once the workout is pushed.',
+      );
+    }
+    return cloudId;
+  }
+}
+
+class WeightLogsHandler extends _CloudHandler {
+  const WeightLogsHandler();
+  @override
+  String get tableName => T.weightLogs;
+  @override
+  String get cloudTable => 'cloud_weight_logs';
+  // Use (user_id, logged_on) as the conflict target — cloud schema has
+  // UNIQUE(user_id, logged_on), so two devices logging the same day
+  // collapse to one row even if they generate different cloud_ids.
+  @override
+  String get conflictTarget => 'user_id,logged_on';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'logged_on': unixSecondsToDate(p[CWeightLog.loggedOn]),
+        'weight_kg': p[CWeightLog.weightKg],
+        'note': p[CWeightLog.note],
+      };
+}
+
+class QuestsHandler extends _CloudHandler {
+  const QuestsHandler();
+  @override
+  String get tableName => T.quests;
+  @override
+  String get cloudTable => 'cloud_quests';
+  @override
+  String get conflictTarget => 'cloud_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'type': p[CQuest.type],
+        'title': p[CQuest.title],
+        'description': p[CQuest.description],
+        'target': p[CQuest.target],
+        'progress': p[CQuest.progress] ?? 0,
+        'xp_reward': p[CQuest.xpReward] ?? 0,
+        'issued_at': unixSecondsToIso(p[CQuest.issuedAt]),
+        'expires_at': unixSecondsToIso(p[CQuest.expiresAt]),
+        'completed_at': unixSecondsToIso(p[CQuest.completedAt]),
+        'locked': intToBool(p[CQuest.locked]) ?? false,
+      };
+}
+
+class StreakFreezeEventsHandler extends _CloudHandler {
+  const StreakFreezeEventsHandler();
+  @override
+  String get tableName => T.streakFreezeEvents;
+  @override
+  String get cloudTable => 'cloud_streak_freeze_events';
+  @override
+  String get conflictTarget => 'cloud_id';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'used_on': unixSecondsToDate(p[CStreakFreezeEvent.usedOn]),
+        'reason': p[CStreakFreezeEvent.reason],
+      };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Composite-keyed (UNIQUE(user_id, muscle))
+// ─────────────────────────────────────────────────────────────────
+
+class MuscleRanksHandler extends _CloudHandler {
+  const MuscleRanksHandler();
+  @override
+  String get tableName => T.muscleRanks;
+  @override
+  String get cloudTable => 'cloud_muscle_ranks';
+  @override
+  String get conflictTarget => 'user_id,muscle';
+
+  @override
+  Map<String, Object?> toCloudRow(Map<String, Object?> p, String _) => {
+        'muscle': p[CMuscleRank.muscle],
+        'rank': p[CMuscleRank.rank],
+        'sub_rank': p[CMuscleRank.subRank],
+        'rank_xp': p[CMuscleRank.rankXp] ?? 0,
+      };
+
+  @override
+  Future<void> _pushDelete(
+    PostgrestQueryBuilder table,
+    SyncOutboxRow row,
+    String userId,
+  ) async {
+    // Composite-keyed delete — delete by cloud_id + user_id (cloud_id
+    // is stable since each (user_id, muscle) row has its own UUID).
+    await table
+        .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('cloud_id', row.cloudId)
+        .eq('user_id', userId);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Production registry
+// ─────────────────────────────────────────────────────────────────
+
+extension PushHandlerRegistryProduction on PushHandlerRegistry {
+  /// Wire all 13 production handlers. Replaces the no-op stubs from
+  /// [PushHandlerRegistry.skeleton].
+  static PushHandlerRegistry production() {
+    final reg = PushHandlerRegistry.skeleton();
+    const handlers = <PushHandler>[
+      PlayerHandler(),
+      GoalsHandler(),
+      ExperienceHandler(),
+      ScheduleHandler(),
+      NotificationPrefsHandler(),
+      PlayerClassHandler(),
+      WorkoutsHandler(),
+      SetsHandler(),
+      MuscleRanksHandler(),
+      QuestsHandler(),
+      StreakHandler(),
+      StreakFreezeEventsHandler(),
+      WeightLogsHandler(),
+    ];
+    for (final h in handlers) {
+      reg.register(h);
+    }
+    return reg;
+  }
+}

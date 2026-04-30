@@ -1,6 +1,7 @@
 import '../app_db.dart';
 import '../models/quest.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 /// Quest CRUD only. Rotation / progress logic lives in Phase 2's gameplay
@@ -10,7 +11,9 @@ class QuestService {
 
   static Future<int> insert(Quest quest) async {
     final db = await AppDb.instance;
-    return db.insert(T.quests, quest.toRow());
+    final id = await db.insert(T.quests, quest.toRow());
+    await OutboxEnqueuer.upsertAutoinc(table: T.quests, id: id);
+    return id;
   }
 
   /// Active (not-yet-completed) quests of a given type
@@ -57,11 +60,13 @@ class QuestService {
     final db = await AppDb.instance;
     await db.update(T.quests, {CQuest.progress: progress},
         where: '${CQuest.id} = ?', whereArgs: [id]);
+    await OutboxEnqueuer.upsertAutoinc(table: T.quests, id: id);
   }
 
   static Future<void> complete(int id) async {
     final db = await AppDb.instance;
     await db.update(T.quests, {CQuest.completedAt: nowSeconds()},
         where: '${CQuest.id} = ?', whereArgs: [id]);
+    await OutboxEnqueuer.upsertAutoinc(table: T.quests, id: id);
   }
 }

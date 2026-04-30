@@ -1,15 +1,24 @@
 import '../app_db.dart';
+import '../models/sync_outbox.dart';
 import '../models/workout.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
+import 'sync_outbox_service.dart';
 
 class WorkoutService {
   WorkoutService._();
 
-  /// Insert a new in-progress workout and return its id.
+  /// Insert a new in-progress workout and return its id. Enqueues an
+  /// outbox push immediately so the row gets a `cloud_id` up-front —
+  /// sets logged later can FK-reference it without waiting for the
+  /// workout to "finish".
   static Future<int> start() async {
     final db = await AppDb.instance;
-    return db.insert(T.workouts, Workout(startedAt: nowSeconds()).toRow());
+    final id =
+        await db.insert(T.workouts, Workout(startedAt: nowSeconds()).toRow());
+    await OutboxEnqueuer.upsertAutoinc(table: T.workouts, id: id);
+    return id;
   }
 
   /// Mark a workout finished. Totals are pre-computed by callers.
@@ -29,6 +38,7 @@ class WorkoutService {
       where: '${CWorkout.id} = ?',
       whereArgs: [id],
     );
+    await OutboxEnqueuer.upsertAutoinc(table: T.workouts, id: id);
   }
 
   /// Add XP on top of what was set by `finish`. Used by `GameHandlers` to
@@ -43,6 +53,7 @@ class WorkoutService {
       'WHERE ${CWorkout.id} = ?',
       [extraXp, id],
     );
+    await OutboxEnqueuer.upsertAutoinc(table: T.workouts, id: id);
   }
 
   static Future<Workout?> byId(int id) async {
@@ -76,10 +87,35 @@ class WorkoutService {
   }
 
   /// Delete a workout. FK `ON DELETE CASCADE` on the `sets` table removes
-  /// every logged set in the same transaction.
+  /// every logged set in the same transaction. Reads the row first so
+  /// we can enqueue a soft-delete (carries the cloud_id forward); falls
+  /// back to a no-op enqueue if the row was never pushed (no cloud_id).
   static Future<void> delete(int id) async {
     final db = await AppDb.instance;
+    // Snapshot cloud_id before the delete so we can push the soft-delete.
+    final rows = await db.query(
+      T.workouts,
+      columns: [CSync.cloudId],
+      where: '${CWorkout.id} = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    final cloudId = rows.isEmpty ? null : rows.first[CSync.cloudId] as String?;
+
     await db.delete(T.workouts, where: '${CWorkout.id} = ?', whereArgs: [id]);
+
+    if (cloudId != null && cloudId.isNotEmpty) {
+      // Direct enqueue — the row is already gone locally, so we can't
+      // round-trip through OutboxEnqueuer's "read row" path.
+      try {
+        await SyncOutboxService.enqueue(
+          tableName: T.workouts,
+          localRowId: id,
+          cloudId: cloudId,
+          opType: SyncOpType.delete,
+        );
+      } catch (_) {/* see OutboxEnqueuer — non-fatal */}
+    }
   }
 
   /// Lifetime XP (sum of `xp_earned` across finished workouts). Feeds

@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/player_class_row.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 /// PRD §9A.7 — player class derivation + reassignment.
@@ -36,6 +37,7 @@ class PlayerClassService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.playerClass);
   }
 
   /// Assign or reassign the player class. Appends the previous class to
@@ -61,5 +63,6 @@ class PlayerClassService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.playerClass);
   }
 }

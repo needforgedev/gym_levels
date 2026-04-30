@@ -1,13 +1,33 @@
 import '../app_db.dart';
 import '../models/workout_set.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 
 class SetsService {
   SetsService._();
 
   static Future<int> insertSet(WorkoutSet set) async {
     final db = await AppDb.instance;
-    return db.insert(T.sets, set.toRow());
+    final id = await db.insert(T.sets, set.toRow());
+    // Pre-resolve the parent workout's cloud_id so the push handler
+    // doesn't have to round-trip the local DB at drain time.
+    final parent = await db.query(
+      T.workouts,
+      columns: [CSync.cloudId],
+      where: '${CWorkout.id} = ?',
+      whereArgs: [set.workoutId],
+      limit: 1,
+    );
+    final parentCloudId =
+        parent.isEmpty ? null : parent.first[CSync.cloudId] as String?;
+    await OutboxEnqueuer.upsertAutoinc(
+      table: T.sets,
+      id: id,
+      extraPayload: parentCloudId == null
+          ? null
+          : {'workout_cloud_id': parentCloudId},
+    );
+    return id;
   }
 
   static Future<List<WorkoutSet>> forWorkout(int workoutId) async {

@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for Supabase auth + cloud sync. Release APKs use only
+         this `main` manifest; without INTERNET declared here, sockets
+         are blocked entirely and DNS lookups fail with errno=7. The
+         debug + profile manifests declare it separately for hot reload.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="gym_levels"
         android:name="${applicationName}"

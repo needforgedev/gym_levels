@@ -7,7 +7,16 @@
 // - Array columns (`priority_muscles`, `equipment`, etc.): JSON-encoded `TEXT`.
 // - `user_id` is always `1` in v1.0 (single-user, single-device).
 
-const int kSchemaVersion = 1;
+/// Local-DB schema version. Bump every time we add an `onUpgrade`
+/// migration. The `schema_version` table audits every bump.
+///
+/// Version history:
+///   1 — initial schema (Phase 1.1).
+///   2 — Scope B sync columns (`cloud_id`, `cloud_updated_at`,
+///       `cloud_deleted_at`) added to every cloud-mirrored table,
+///       plus new local `sync_outbox` + `sync_state` tables.
+///       Lands with [socials_plan.md](../../socials_plan.md) S3.0.
+const int kSchemaVersion = 2;
 
 // Table names
 class T {
@@ -32,6 +41,73 @@ class T {
   static const analyticsEvents = 'analytics_events';
   static const crashReports = 'crash_reports';
   static const schemaVersion = 'schema_version';
+  // Scope B sync (v2)
+  static const syncOutbox = 'sync_outbox';
+  static const syncState = 'sync_state';
+}
+
+/// Column names added to every cloud-mirrored local table by the v2
+/// schema bump (Phase 4.1a S3.0). Each synced row tracks:
+///   • `cloud_id` — UUID (stored as TEXT). Generated locally on first
+///     push; matches the cloud row's primary key.
+///   • `cloud_updated_at` — epoch seconds of the last successful push
+///     ack from the server. Used by conflict resolution.
+///   • `cloud_deleted_at` — soft-delete flag, NULL when alive. Set
+///     locally when a row is removed; the sync engine pushes a delete
+///     to the server, then the row is physically removed locally.
+class CSync {
+  CSync._();
+  static const cloudId = 'cloud_id';
+  static const cloudUpdatedAt = 'cloud_updated_at';
+  static const cloudDeletedAt = 'cloud_deleted_at';
+}
+
+/// Pending-push queue. Every local write to a cloud-mirrored table
+/// also writes one row here. The `SyncEngine` drains this in FIFO
+/// order, marks rows pushed, and prunes them.
+class CSyncOutbox {
+  CSyncOutbox._();
+  static const id = 'id';
+  static const tableName = 'table_name';
+  /// Local PK of the row being pushed (always int — matches the
+  /// origin table's auto-increment).
+  static const localRowId = 'local_row_id';
+  /// `cloud_id` UUID — same value as the origin row's `cloud_id`
+  /// column. Stored here so we don't have to re-read the row when
+  /// draining; if the row is later deleted locally, we still know
+  /// which cloud_id to delete server-side.
+  static const cloudId = 'cloud_id';
+  /// `'upsert'` | `'delete'`.
+  static const opType = 'op_type';
+  /// JSON snapshot of the row at enqueue time. Captures the value to
+  /// push *now*, even if the local row is edited again before this
+  /// outbox entry drains.
+  static const payloadJson = 'payload_json';
+  static const createdAt = 'created_at';
+  static const attemptCount = 'attempt_count';
+  static const lastAttemptAt = 'last_attempt_at';
+  static const lastError = 'last_error';
+  /// Set when the server has acked the push. Rows with a non-null
+  /// pushedAt are pruned by `SyncEngine.prunePushed()`.
+  static const pushedAt = 'pushed_at';
+}
+
+/// Singleton bookkeeping for resumable initial sync (Phase 4.1a S3b)
+/// and outbox-drain telemetry. Always exactly one row, `id = 1`.
+class CSyncState {
+  CSyncState._();
+  static const id = 'id';
+  /// Epoch seconds of the most recent successful full initial-sync
+  /// completion. NULL until the first sign-in's hydration finishes.
+  static const lastFullSyncAt = 'last_full_sync_at';
+  /// Which table the in-progress initial-sync is currently pulling.
+  /// NULL when no initial-sync is in flight.
+  static const initialSyncTable = 'initial_sync_table';
+  /// Pagination cursor inside `initialSyncTable` for resumability.
+  static const initialSyncOffset = 'initial_sync_offset';
+  /// Epoch seconds of the most recent outbox drain attempt
+  /// (regardless of success).
+  static const lastOutboxDrainAt = 'last_outbox_drain_at';
 }
 
 // Column names — grouped by table.
@@ -257,7 +333,10 @@ const List<String> createStatements = [
     ${CPlayer.unitsPref}         TEXT    NOT NULL DEFAULT 'metric',
     ${CPlayer.onboardedAt}       INTEGER,
     ${CPlayer.createdAt}         INTEGER NOT NULL,
-    ${CPlayer.updatedAt}         INTEGER NOT NULL
+    ${CPlayer.updatedAt}         INTEGER NOT NULL,
+    ${CSync.cloudId}             TEXT,
+    ${CSync.cloudUpdatedAt}      INTEGER,
+    ${CSync.cloudDeletedAt}      INTEGER
   )
   ''',
 
@@ -270,7 +349,10 @@ const List<String> createStatements = [
     ${CGoals.rewardStyle}      TEXT,
     ${CGoals.weightDirection}  TEXT,
     ${CGoals.targetWeightKg}   REAL,
-    ${CGoals.updatedAt}        INTEGER NOT NULL
+    ${CGoals.updatedAt}        INTEGER NOT NULL,
+    ${CSync.cloudId}           TEXT,
+    ${CSync.cloudUpdatedAt}    INTEGER,
+    ${CSync.cloudDeletedAt}    INTEGER
   )
   ''',
 
@@ -281,7 +363,10 @@ const List<String> createStatements = [
     ${CExperience.equipment}   TEXT NOT NULL DEFAULT '[]',
     ${CExperience.limitations} TEXT NOT NULL DEFAULT '[]',
     ${CExperience.styles}      TEXT NOT NULL DEFAULT '[]',
-    ${CExperience.updatedAt}   INTEGER NOT NULL
+    ${CExperience.updatedAt}   INTEGER NOT NULL,
+    ${CSync.cloudId}           TEXT,
+    ${CSync.cloudUpdatedAt}    INTEGER,
+    ${CSync.cloudDeletedAt}    INTEGER
   )
   ''',
 
@@ -290,7 +375,10 @@ const List<String> createStatements = [
     ${CSchedule.userId}         INTEGER PRIMARY KEY REFERENCES ${T.player}(${CPlayer.id}) ON DELETE CASCADE,
     ${CSchedule.days}           TEXT NOT NULL DEFAULT '[]',
     ${CSchedule.sessionMinutes} INTEGER,
-    ${CSchedule.updatedAt}      INTEGER NOT NULL
+    ${CSchedule.updatedAt}      INTEGER NOT NULL,
+    ${CSync.cloudId}            TEXT,
+    ${CSync.cloudUpdatedAt}     INTEGER,
+    ${CSync.cloudDeletedAt}     INTEGER
   )
   ''',
 
@@ -299,7 +387,10 @@ const List<String> createStatements = [
     ${CNotificationPrefs.userId}           INTEGER PRIMARY KEY REFERENCES ${T.player}(${CPlayer.id}) ON DELETE CASCADE,
     ${CNotificationPrefs.workoutReminders} INTEGER NOT NULL DEFAULT 1,
     ${CNotificationPrefs.streakWarnings}   INTEGER NOT NULL DEFAULT 1,
-    ${CNotificationPrefs.weeklyReports}    INTEGER NOT NULL DEFAULT 1
+    ${CNotificationPrefs.weeklyReports}    INTEGER NOT NULL DEFAULT 1,
+    ${CSync.cloudId}                       TEXT,
+    ${CSync.cloudUpdatedAt}                INTEGER,
+    ${CSync.cloudDeletedAt}                INTEGER
   )
   ''',
 
@@ -309,7 +400,10 @@ const List<String> createStatements = [
     ${CPlayerClass.classKey}         TEXT NOT NULL,
     ${CPlayerClass.assignedAt}       INTEGER NOT NULL,
     ${CPlayerClass.lastChangedAt}    INTEGER NOT NULL,
-    ${CPlayerClass.evolutionHistory} TEXT NOT NULL DEFAULT '[]'
+    ${CPlayerClass.evolutionHistory} TEXT NOT NULL DEFAULT '[]',
+    ${CSync.cloudId}                 TEXT,
+    ${CSync.cloudUpdatedAt}          INTEGER,
+    ${CSync.cloudDeletedAt}          INTEGER
   )
   ''',
 
@@ -337,7 +431,10 @@ const List<String> createStatements = [
     ${CWorkout.endedAt}    INTEGER,
     ${CWorkout.xpEarned}   INTEGER NOT NULL DEFAULT 0,
     ${CWorkout.volumeKg}   REAL    NOT NULL DEFAULT 0,
-    ${CWorkout.note}       TEXT
+    ${CWorkout.note}       TEXT,
+    ${CSync.cloudId}       TEXT,
+    ${CSync.cloudUpdatedAt}  INTEGER,
+    ${CSync.cloudDeletedAt}  INTEGER
   )
   ''',
   'CREATE INDEX idx_workouts_user_started ON ${T.workouts}(${CWorkout.userId}, ${CWorkout.startedAt} DESC)',
@@ -353,7 +450,10 @@ const List<String> createStatements = [
     ${CSet.rpe}         INTEGER,
     ${CSet.isPr}        INTEGER NOT NULL DEFAULT 0,
     ${CSet.xpEarned}    INTEGER NOT NULL DEFAULT 0,
-    ${CSet.completedAt} INTEGER NOT NULL
+    ${CSet.completedAt} INTEGER NOT NULL,
+    ${CSync.cloudId}        TEXT,
+    ${CSync.cloudUpdatedAt} INTEGER,
+    ${CSync.cloudDeletedAt} INTEGER
   )
   ''',
   'CREATE INDEX idx_sets_workout ON ${T.sets}(${CSet.workoutId})',
@@ -390,6 +490,9 @@ const List<String> createStatements = [
     ${CMuscleRank.subRank}   TEXT,
     ${CMuscleRank.rankXp}    INTEGER NOT NULL DEFAULT 0,
     ${CMuscleRank.updatedAt} INTEGER NOT NULL,
+    ${CSync.cloudId}         TEXT,
+    ${CSync.cloudUpdatedAt}  INTEGER,
+    ${CSync.cloudDeletedAt}  INTEGER,
     PRIMARY KEY (${CMuscleRank.userId}, ${CMuscleRank.muscle})
   )
   ''',
@@ -407,7 +510,10 @@ const List<String> createStatements = [
     ${CQuest.issuedAt}    INTEGER NOT NULL,
     ${CQuest.expiresAt}   INTEGER,
     ${CQuest.completedAt} INTEGER,
-    ${CQuest.locked}      INTEGER NOT NULL DEFAULT 0
+    ${CQuest.locked}      INTEGER NOT NULL DEFAULT 0,
+    ${CSync.cloudId}        TEXT,
+    ${CSync.cloudUpdatedAt} INTEGER,
+    ${CSync.cloudDeletedAt} INTEGER
   )
   ''',
   'CREATE INDEX idx_quests_user_type_active ON ${T.quests}(${CQuest.userId}, ${CQuest.type}, ${CQuest.completedAt}, ${CQuest.expiresAt})',
@@ -419,7 +525,10 @@ const List<String> createStatements = [
     ${CStreak.longest}             INTEGER NOT NULL DEFAULT 0,
     ${CStreak.lastActiveDate}      INTEGER,
     ${CStreak.freezesRemaining}    INTEGER NOT NULL DEFAULT 1,
-    ${CStreak.freezesPeriodStart}  INTEGER NOT NULL
+    ${CStreak.freezesPeriodStart}  INTEGER NOT NULL,
+    ${CSync.cloudId}               TEXT,
+    ${CSync.cloudUpdatedAt}        INTEGER,
+    ${CSync.cloudDeletedAt}        INTEGER
   )
   ''',
 
@@ -428,7 +537,10 @@ const List<String> createStatements = [
     ${CStreakFreezeEvent.id}     INTEGER PRIMARY KEY AUTOINCREMENT,
     ${CStreakFreezeEvent.userId} INTEGER NOT NULL REFERENCES ${T.player}(${CPlayer.id}) ON DELETE CASCADE,
     ${CStreakFreezeEvent.usedOn} INTEGER NOT NULL,
-    ${CStreakFreezeEvent.reason} TEXT
+    ${CStreakFreezeEvent.reason} TEXT,
+    ${CSync.cloudId}             TEXT,
+    ${CSync.cloudUpdatedAt}      INTEGER,
+    ${CSync.cloudDeletedAt}      INTEGER
   )
   ''',
 
@@ -440,6 +552,9 @@ const List<String> createStatements = [
     ${CWeightLog.loggedOn}  INTEGER NOT NULL,
     ${CWeightLog.weightKg}  REAL NOT NULL,
     ${CWeightLog.note}      TEXT,
+    ${CSync.cloudId}        TEXT,
+    ${CSync.cloudUpdatedAt} INTEGER,
+    ${CSync.cloudDeletedAt} INTEGER,
     UNIQUE (${CWeightLog.userId}, ${CWeightLog.loggedOn})
   )
   ''',
@@ -488,4 +603,42 @@ const List<String> createStatements = [
     ${CSchemaVersion.note}      TEXT
   )
   ''',
+
+  // ───────── Scope B sync (v2) ─────────
+  // Pending-push queue. Drained by SyncEngine in FIFO order. Rows are
+  // pruned after successful push acknowledgement. See
+  // socials_plan.md §3 (S3) + §1.2 sync model.
+  '''
+  CREATE TABLE ${T.syncOutbox} (
+    ${CSyncOutbox.id}            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ${CSyncOutbox.tableName}     TEXT NOT NULL,
+    ${CSyncOutbox.localRowId}    INTEGER NOT NULL,
+    ${CSyncOutbox.cloudId}       TEXT NOT NULL,
+    ${CSyncOutbox.opType}        TEXT NOT NULL CHECK (${CSyncOutbox.opType} IN ('upsert', 'delete')),
+    ${CSyncOutbox.payloadJson}   TEXT,
+    ${CSyncOutbox.createdAt}     INTEGER NOT NULL,
+    ${CSyncOutbox.attemptCount}  INTEGER NOT NULL DEFAULT 0,
+    ${CSyncOutbox.lastAttemptAt} INTEGER,
+    ${CSyncOutbox.lastError}     TEXT,
+    ${CSyncOutbox.pushedAt}      INTEGER
+  )
+  ''',
+  // Fast lookup for the drainer: pending rows ordered by creation.
+  'CREATE INDEX idx_sync_outbox_pending ON ${T.syncOutbox}(${CSyncOutbox.createdAt}) WHERE ${CSyncOutbox.pushedAt} IS NULL',
+  // Fast prune of acked rows.
+  'CREATE INDEX idx_sync_outbox_pushed ON ${T.syncOutbox}(${CSyncOutbox.pushedAt}) WHERE ${CSyncOutbox.pushedAt} IS NOT NULL',
+
+  // Singleton sync-state row. Always exactly one row, id = 1.
+  '''
+  CREATE TABLE ${T.syncState} (
+    ${CSyncState.id}                 INTEGER PRIMARY KEY CHECK (${CSyncState.id} = 1),
+    ${CSyncState.lastFullSyncAt}     INTEGER,
+    ${CSyncState.initialSyncTable}   TEXT,
+    ${CSyncState.initialSyncOffset}  INTEGER NOT NULL DEFAULT 0,
+    ${CSyncState.lastOutboxDrainAt}  INTEGER
+  )
+  ''',
+  // Seed the singleton row so SyncEngine can blindly UPDATE without
+  // worrying about INSERT-or-UPDATE branching.
+  'INSERT INTO ${T.syncState} (${CSyncState.id}) VALUES (1)',
 ];

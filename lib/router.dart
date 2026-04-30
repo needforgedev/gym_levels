@@ -9,6 +9,7 @@ import 'screens/auth/sign_in_screen.dart';
 import 'screens/auth/sign_up_screen.dart';
 import 'screens/auth/username_screen.dart';
 import 'screens/auth/verify_email_screen.dart';
+import 'screens/auth/welcome_back_screen.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
 import 'screens/boss_completion_screen.dart';
@@ -111,6 +112,11 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/reset-password',
       builder: (_, _) => const ResetPasswordScreen(),
+    ),
+    // S3b — initial-sync hydration after sign-in on a fresh install.
+    GoRoute(
+      path: '/welcome-back',
+      builder: (_, _) => const WelcomeBackScreen(),
     ),
 
     // Section 1 — Player Registration (display name → local sqflite)

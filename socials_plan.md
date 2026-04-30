@@ -3,15 +3,17 @@
 **Companion to:** [plan.md](plan.md) (main implementation plan) + [PRD_GamifiedFitnessApp.md](PRD_GamifiedFitnessApp.md)
 **Stack additions:** Supabase (Postgres + Auth + Realtime). No other backend.
 **Sync scope:** **Scope B — full cloud sync** (locked 2026-04-29). Every domain table on the device mirrors to Supabase; device switch restores 100% of state.
-**Last updated:** 2026-04-29
+**Last updated:** 2026-04-30
 
 **Implementation progress:**
 
 - **S0 — Backend setup:** ✓ done (8 SQL migrations applied to Supabase project `vhlmogzajbugcpqossbs`, Mumbai region). End-to-end smoke-tested 2026-04-29 — sign up, claim handle, save phone, walk onboarding to Home, all four columns populated correctly on `public_profiles`.
 - **S1 — Auth screens:** ✓ done + smoke-tested. Deep-link URL-scheme registration on native side still pending (see S1 sub-bullet).
 - **S2 — Username + phone:** ✓ done + smoke-tested. Live availability check round-trips to Supabase and reflects taken/reserved/available correctly; phone hashing into `phone_hash` confirmed via SQL inspection.
-- **S3 — Cloud sync engine:** not started (next phase).
-- S3b–S10: not started.
+- **S3 — Cloud sync engine:** ✓ push side complete (S3.0–S3.3, 2026-04-30). Local schema migrated to v2 with `cloud_id`/`cloud_updated_at`/`cloud_deleted_at` on every cloud-mirrored table + new `sync_outbox` + `sync_state` tables. Outbox CRUD with attempt-aware exponential backoff (60s → 16m, dead-letter at 5). SyncEngine drains FIFO under a mutex; SyncLifecycle drains on app foreground + every 30s while foregrounded. 13 production push handlers translate local-row JSON → Supabase upsert/soft-delete (singletons conflict on `user_id`, append-only on `cloud_id`, muscle_ranks on `(user_id, muscle)`, weight_logs on `(user_id, logged_on)`). Sets pre-resolve their parent workout's cloud_id at enqueue time. Sign-out clears the outbox + resets sync state so a different user can't push the previous one's pending rows.
+- **S3b — Initial-sync UX:** ✓ done (2026-04-30). 13 pull handlers mirror the push handlers in reverse, paginating Supabase fetches (200 rows per page) and writing into local sqflite idempotently (lookup-by-cloud_id then UPDATE-or-INSERT for append-only; REPLACE-by-natural-key for singletons + composite-keyed). `InitialSync` orchestrator pulls in priority order — profile + onboarding answers first (so onboarding is skipped on the new device), then ranks/streak/class (so Home renders), then workouts → sets → quests → freeze events → weight logs (the bulk). Resumable cursor in `sync_state` (`initial_sync_table` + `initial_sync_offset`) survives mid-sync kills. Welcome-back screen drives the orchestrator with a progress bar + per-table label + retry/skip CTAs. Sign-in branches: first-time device → `/welcome-back`, returning device → straight to `/home`. After hydration, the global `isOnboardedNotifier` is refreshed from the pulled `player.onboarded_at` so the router's redirect respects the new state.
+- **S3c — Incremental pull (cross-device delta propagation, added 2026-04-30 after smoke testing):** ✓ done (2026-04-30). Added `pullSince(since)` to `PullHandler`; `_CloudPullHandler` implementation calls `.gt('updated_at', sinceIso).order('updated_at').limit(500)` and branches per-row on `deleted_at` (delete-by-cloud-id vs upsert). New [`IncrementalPull`](lib/data/sync/incremental_pull.dart) orchestrator runs after every push drain (foreground + 30s) — snapshots `cutoff = now()` *before* fetching, walks tables in [`kPullPriorityOrder`](lib/data/sync/pull_handler.dart) using `state.lastFullSyncAt` as the `since` cursor, and on full success advances the cursor to `cutoff`. Failure mid-pass leaves the cursor untouched so the next tick retries the missed range. Wired into [`SyncEngine.drainOnce`](lib/data/sync/sync_engine.dart) — push first, then incremental pull, both inside the engine's mutex. Closes the multi-device gap: two devices on the same account now converge within ~30s without a manual sign-out / sign-in.
+- S4–S10: not started.
 
 **Dev-only configuration currently in effect** (revert before launch):
 
@@ -244,26 +246,51 @@ Each milestone is independently shippable for review; the full release ships whe
 
 This is the heart of Scope B. A generic, table-agnostic sync engine plus per-table push/pull handlers.
 
-- [ ] **Local schema migration**: add `cloud_id UUID NULLABLE`, `updated_at`, `deleted_at` columns to every Layer 1 table that gets synced (~13 tables). Backfill `cloud_id` for existing rows on first sign-in.
-- [ ] **`sync_outbox` local table**: stores `(table_name, cloud_id, op_type)` pending pushes. Drains in FIFO order.
-- [ ] **`SyncEngine` service**: 
-  - `enqueue(table, cloudId, op)` — called from every domain service after a local write.
-  - `drain()` — background worker that flushes the outbox to Supabase. Exponential backoff, max 5 retries, dead-letters to a local error log after that.
-  - `pullAll()` — initial-sync pull for new-device hydration.
-- [ ] **Per-table push handlers** — one per cloud-mirrored table; converts the local row to the cloud row shape, calls Supabase upsert.
-- [ ] **Per-table pull handlers** — one per cloud-mirrored table; fetches paginated rows, hydrates the local table.
-- [ ] **Wire pushes into existing services**: `WorkoutService.finish` → `enqueue('workouts', cloudId, upsert)`; `SetsService.insertSet` → `enqueue('sets', …)`; same for `WeightLogService`, `QuestService`, `MuscleRankService`, `StreakService`, `GoalsService`, `ExperienceService`, `ScheduleService`, `NotificationPrefsService`, `PlayerService`, `PlayerClassService`.
-- [ ] **Outbox flush triggers**: app foreground, network reconnect, post-workout-finish, every 30s while open.
-- [ ] **Schema-version tagged on every push** so old clients talking to a new server don't corrupt rows.
-- [ ] **Conflict-resolution path**: server returns 409 with current row → client merges (last-write-wins via `updated_at`) → re-pushes.
+**Push side (S3.0–S3.3) — done 2026-04-30. Pull side (S3.4) folded into S3b.**
 
-## S3b — Initial-sync UX (~2 days)
+- [x] **S3.0 — Local schema migration** ([lib/data/schema.dart](lib/data/schema.dart) v1→v2; [lib/data/app_db.dart](lib/data/app_db.dart) `_migrateV1toV2`). Adds nullable `cloud_id TEXT` + `cloud_updated_at INTEGER` + `cloud_deleted_at INTEGER` to all 13 cloud-mirrored tables via idempotent `ALTER TABLE ADD COLUMN`. Creates `sync_outbox` (FIFO push queue with 2 partial indexes for fast pending/pruned lookups) + `sync_state` singleton (drives initial-sync resumability + drain telemetry).
+- [x] **S3.1 — SyncEngine skeleton.**
+  - [x] [lib/data/services/sync_outbox_service.dart](lib/data/services/sync_outbox_service.dart) — outbox CRUD with attempt-aware backoff filter on `nextBatch`. Exponential backoff: 60s, 2m, 4m, 8m, 16m. Dead-letter at `kMaxAttempts = 5`.
+  - [x] [lib/data/services/sync_state_service.dart](lib/data/services/sync_state_service.dart) — singleton CRUD: `get()`, `save()`, `recordDrainAttempt()`, `setInitialSyncProgress()`, `markFullSyncComplete()`, `reset()`.
+  - [x] [lib/data/sync/push_handler.dart](lib/data/sync/push_handler.dart) — `PushHandler` interface + `PushHandlerRegistry` with `.skeleton()` (no-op stubs) and a `.production()` extension factory.
+  - [x] [lib/data/sync/sync_engine.dart](lib/data/sync/sync_engine.dart) — drain loop with in-process mutex, auth gate (no-op when signed out), per-row dispatch, `DrainReport` telemetry. Stamps `last_outbox_drain_at` and prunes pushed rows after every pass.
+  - [x] [lib/data/sync/sync_lifecycle.dart](lib/data/sync/sync_lifecycle.dart) — `WidgetsBindingObserver`. Drains on `AppLifecycleState.resumed` + every 30s while foregrounded; pauses the timer on `paused`/`detached` to save battery.
+  - [x] Wired into [lib/main.dart](lib/main.dart) after Supabase init.
+  - [x] [`AuthService.signOut()`](lib/data/services/auth_service.dart) clears the outbox + resets sync_state so a different user can't push the previous one's pending operations.
+- [x] **S3.2 — Per-table push handlers** ([lib/data/sync/cloud_push_handlers.dart](lib/data/sync/cloud_push_handlers.dart)) — 13 concrete handlers grouped by shape:
+  - **Singletons** (`onConflict: 'user_id'`, soft-delete by `user_id`): `PlayerHandler`, `GoalsHandler`, `ExperienceHandler`, `ScheduleHandler`, `NotificationPrefsHandler`, `PlayerClassHandler`, `StreakHandler`.
+  - **Append-only** (`onConflict: 'cloud_id'`, soft-delete by `cloud_id`): `WorkoutsHandler`, `SetsHandler`, `QuestsHandler`, `StreakFreezeEventsHandler`.
+  - **Composite-keyed** (`onConflict: 'user_id,muscle'`): `MuscleRanksHandler`.
+  - **UNIQUE pair** (`onConflict: 'user_id,logged_on'`): `WeightLogsHandler`.
+  - `SetsHandler` does an async local lookup to translate `workout_id` (local int PK) → parent's `cloud_id` UUID with a clear error message when the workout hasn't been pushed yet (engine catches → backoff retry).
+  - Conversion utilities in [lib/data/sync/cloud_payload.dart](lib/data/sync/cloud_payload.dart): unix-seconds → ISO-8601 / DATE, JSON-encoded TEXT array → `List<String>` / `List<int>`, 0/1 INT → BOOLEAN. Honours post-mortem 8.2 — every handler upserts the *full* local row, never a partial column set.
+- [x] **S3.3 — Wire pushes into existing services** ([lib/data/sync/outbox_enqueuer.dart](lib/data/sync/outbox_enqueuer.dart) + 10 service edits). Generic enqueue helper handles `cloud_id` ensure + JSON snapshot + outbox insert. Convenience wrappers: `upsertPlayer()`, `upsertSingletonByUserId(table)`, `upsertAutoinc(table:, id:, extraPayload:)`, `upsertMuscleRank(muscle)`. All 13 cloud-mirrored services now enqueue on every write:
+  - Singletons: `PlayerService.{ensurePlayer, setDisplayName, upsert, completeOnboarding}`, `GoalsService.upsert`, `ExperienceService.upsert`, `ScheduleService.upsert`, `NotificationPrefsService.upsert`, `PlayerClassService.{assign, appendEvolutionEntry}`, `StreakService.{ensure, upsert}`.
+  - Append-only: `WorkoutService.{start, finish, addXp, delete}` (delete enqueues a soft-delete carrying the cloud_id forward), `SetsService.insertSet` (pre-resolves `workout_cloud_id` via local DB so the push handler doesn't need an extra round-trip), `WeightLogService.upsertForDay`, `QuestService.{insert, updateProgress, complete}`, `StreakService.logFreezeUsed`, `MuscleRankService.upsert`.
+  - **Race-safety:** workouts enqueue at `start()` time, so their `cloud_id` exists locally before any set is logged against them.
+- [x] **Outbox flush triggers** — app foreground (immediate), every 30s while foregrounded (timer in [SyncLifecycle](lib/data/sync/sync_lifecycle.dart)), engine no-op when signed out. Network-reconnect trigger is implicit (the next periodic tick or foreground will retry).
+- [ ] **Schema-version tagged on every push** — cloud schema declares `schema_version INT NOT NULL DEFAULT 1` for every table, so writes are tagged via Postgres default. Explicit client-side tagging deferred until v2 of the cloud schema lands.
+- [ ] **Conflict-resolution path**: server returns 409 with current row → client merges (last-write-wins via `updated_at`) → re-pushes. Deferred to S10 — current handlers always push the full local row, so conflicts manifest as "your version overwrites theirs" on the singleton tables and as no-op upserts on the append-only ones.
 
-- [ ] **Welcome-back screen** post-sign-in with progress bar: "Restoring your training history… 47%".
-- [ ] **Pull tables in priority order** per §1.7: profile + onboarding tables first, then muscle ranks + streak + player class, then workouts + sets last (the bulk).
-- [ ] **Paginated fetch** (200 rows per request) for heavy tables.
-- [ ] **Resumable**: if killed mid-sync, persists last-completed page in a `sync_state` row; resumes on next launch.
-- [ ] **First-sync vs ongoing-sync** branching: on a brand-new device, `pullAll()`; on an existing device, only push from outbox.
+## S3b — Initial-sync UX ✓ done (2026-04-30)
+
+- [x] **Welcome-back screen** post-sign-in with progress bar: "Restoring your history… 47%". [lib/screens/auth/welcome_back_screen.dart](lib/screens/auth/welcome_back_screen.dart). Per-table label, step counter, retry on error, skip-to-home for impatient users.
+- [x] **Pull tables in priority order** per §1.7: profile + onboarding tables first, then muscle ranks + streak + player class, then workouts → sets → quests → freeze events → weight logs (the bulk). Order encoded in [`kPullPriorityOrder`](lib/data/sync/pull_handler.dart).
+- [x] **Paginated fetch** (200 rows per request) — [lib/data/sync/cloud_pull_handlers.dart](lib/data/sync/cloud_pull_handlers.dart) `_CloudPullHandler.pullPage` uses `.range(offset, offset + pageSize - 1)` against PostgREST.
+- [x] **Resumable**: [`InitialSync.run`](lib/data/sync/initial_sync.dart) reads `sync_state.initial_sync_table` + `initial_sync_offset` to find the resume point and persists progress after every page. A kill mid-sync resumes cleanly on next launch.
+- [x] **First-sync vs ongoing-sync branching**: [`InitialSync.needed()`](lib/data/sync/initial_sync.dart) returns `true` iff authenticated AND `last_full_sync_at IS NULL`. [Sign-in screen](lib/screens/auth/sign_in_screen.dart) routes to `/welcome-back` only on first sign-in per device; subsequent sign-ins skip straight to `/home`.
+- [x] **Idempotent re-runs**: each handler looks up by `cloud_id` then UPDATE-or-INSERT (append-only) or REPLACE-by-natural-key (singletons / composite-keyed). Replaying a page is a no-op.
+- [x] **Cross-table FK resolution**: [`SetsPullHandler`](lib/data/sync/cloud_pull_handlers.dart) translates cloud `workout_id` UUID → local int PK by looking up the workouts table's `cloud_id`. Workouts are pulled before sets (priority order), so the lookup is reliable; orphaned sets are skipped and re-tried on the next pass.
+- [x] **Soft-deleted rows are skipped**: handlers filter `deleted_at IS NULL` server-side, so soft-deleted cloud rows don't pollute the local DB.
+
+## S3c — Incremental pull ✓ done (2026-04-30)
+
+Not in the original plan — added when end-to-end smoke testing on two devices revealed that push-only sync gave us "device A → cloud" but no "cloud → device A". `InitialSync` runs once per device; without an incremental counterpart, deltas pushed by device B never appeared on device A. S3c closes the gap with periodic delta pulls.
+
+- [x] **`PullHandler.pullSince(since)`** — fetches rows where `updated_at > since` (no `deleted_at` filter) and applies each: upsert if alive, delete-by-cloud-id if soft-deleted. Limit 500 rows per pass per table; in steady state most ticks fetch zero.
+- [x] **`IncrementalPull` orchestrator** ([lib/data/sync/incremental_pull.dart](lib/data/sync/incremental_pull.dart)) — snapshots `cutoff = now()` before fetching (so rows landing mid-pass aren't lost on the next cursor advance), walks `kPullPriorityOrder`, and on full success persists `cutoff` as the new `last_full_sync_at`. Failure → cursor untouched, next pass retries.
+- [x] **`SyncEngine.drainOnce` wiring** — push then pull, both gated by the engine's mutex. Lifecycle hooks (foreground + 30s) drive both halves on the same tick.
+- [x] **Cursor reuse**: `sync_state.last_full_sync_at` repurposed from "last full sync timestamp" to "high-water mark of cloud `updated_at` we've hydrated locally." Stays NULL until `InitialSync` completes; bumped forward on every successful incremental pass. `InitialSync.needed()` semantic ("is this null?") is unchanged.
 
 ## S4 — Contact-match flow (~2-3 days)
 

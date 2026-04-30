@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'data/app_db.dart';
 import 'data/services/player_service.dart';
 import 'data/supabase/supabase_client.dart';
+import 'data/sync/cloud_push_handlers.dart';
+import 'data/sync/sync_engine.dart';
+import 'data/sync/sync_lifecycle.dart';
 import 'router.dart';
 import 'state/onboarding_flag.dart';
 import 'state/player_state.dart';
@@ -35,8 +38,22 @@ void main() async {
   final player = await PlayerService.getPlayer();
   isOnboardedNotifier.value = player?.isOnboarded ?? false;
 
+  // Cloud-sync engine. Drains the local outbox to Supabase on app
+  // foreground + every 30s while foregrounded. No-op when the user is
+  // signed out (writes still queue locally). See socials_plan.md S3.
+  _syncLifecycle = SyncLifecycle(
+    engine: SyncEngine(
+      registry: PushHandlerRegistryProduction.production(),
+    ),
+  )..attach();
+
   runApp(const LevelUpApp());
 }
+
+/// Held at module scope so the WidgetsBindingObserver isn't garbage-
+/// collected. Set in [main]. Tests override SupabaseConfig + skip this.
+// ignore: unused_element
+SyncLifecycle? _syncLifecycle;
 
 class LevelUpApp extends StatelessWidget {
   const LevelUpApp({super.key});

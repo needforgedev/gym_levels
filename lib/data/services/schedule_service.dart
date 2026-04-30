@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/schedule_row.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 class ScheduleService {
@@ -27,6 +28,7 @@ class ScheduleService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.schedule);
   }
 
   /// Patches a subset of schedule columns. Creates the row if missing.

@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/player.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 /// Single-row `player` table (user_id = 1 in v1.0). PRD §11.7.
@@ -34,6 +35,7 @@ class PlayerService {
     );
     await db.insert(T.player, row.toRow(),
         conflictAlgorithm: ConflictAlgorithm.abort);
+    await OutboxEnqueuer.upsertPlayer();
     return row;
   }
 
@@ -49,6 +51,7 @@ class PlayerService {
       where: '${CPlayer.id} = ?',
       whereArgs: [1],
     );
+    await OutboxEnqueuer.upsertPlayer();
   }
 
   /// Overwrites the whole player row.
@@ -59,6 +62,7 @@ class PlayerService {
       player.copyWith(updatedAt: nowSeconds()).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertPlayer();
   }
 
   /// Patches a subset of player columns. Creates the row if missing.
@@ -91,6 +95,7 @@ class PlayerService {
       where: '${CPlayer.id} = ?',
       whereArgs: [1],
     );
+    await OutboxEnqueuer.upsertPlayer();
   }
 
   /// Wipes every row via cascade. PRD §19 — "Delete my data".

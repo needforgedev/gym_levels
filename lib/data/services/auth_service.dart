@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase/supabase_client.dart';
+import 'sync_outbox_service.dart';
+import 'sync_state_service.dart';
 
 /// Result type returned by every mutation. Keeps screens from
 /// boilerplate try/catch — callers just check `ok` and surface
@@ -105,14 +107,28 @@ class AuthService {
   }
 
   /// Destroys the local Supabase session token. **Does NOT touch local
-  /// sqflite** — the user can keep training offline-only after this.
-  /// They can sign back in any time to re-hydrate their cloud state.
+  /// sqflite domain rows** — the user can keep training offline-only
+  /// after this. They can sign back in any time to re-hydrate their
+  /// cloud state.
+  ///
+  /// Does clear the sync outbox and reset the sync-state cursor: a
+  /// different user signing in next must not push the previous user's
+  /// pending operations under their own auth, and must restart initial-
+  /// sync from offset 0.
   static Future<AuthResult> signOut() async {
     if (!isConfigured) {
+      // Best-effort outbox clear even with no Supabase — keeps local
+      // state consistent if the user previously had a session.
+      await SyncOutboxService.clear();
+      await SyncStateService.reset();
       return (ok: true, errorMessage: null);
     }
     try {
       await _auth.signOut();
+      // Ordering: sign out first so any drain that races us bails on
+      // `isAuthenticated == false`. Then drop the outbox + state.
+      await SyncOutboxService.clear();
+      await SyncStateService.reset();
       return (ok: true, errorMessage: null);
     } on AuthException catch (e) {
       return (ok: false, errorMessage: e.message);

@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/weight_log.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 
 class WeightLogService {
   WeightLogService._();
@@ -38,10 +39,13 @@ class WeightLogService {
     String? note,
   }) async {
     final db = await AppDb.instance;
-    await db.insert(
+    final id = await db.insert(
       T.weightLogs,
       WeightLog(loggedOn: dayEpoch, weightKg: weightKg, note: note).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    // ConflictAlgorithm.replace returns the new row id (existing
+    // row is deleted then re-inserted). Pass directly.
+    await OutboxEnqueuer.upsertAutoinc(table: T.weightLogs, id: id);
   }
 }

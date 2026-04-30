@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/goal.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 class GoalsService {
@@ -30,6 +31,7 @@ class GoalsService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.goals);
   }
 
   /// Patches a subset of goal columns. Creates the row if missing.

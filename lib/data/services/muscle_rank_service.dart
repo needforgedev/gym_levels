@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/muscle_rank.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 class MuscleRankService {
@@ -48,5 +49,6 @@ class MuscleRankService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertMuscleRank(muscle);
   }
 }

@@ -58,7 +58,7 @@ build/
 # `supabase db diff` locally). Migrations under `supabase/migrations/`
 # stay committed — they're the source of truth.
 .supabase/
-supabase/
+
 # Android signing artefacts. Pre-launch we'll generate a release
 # keystore; never check it in.
 *.jks

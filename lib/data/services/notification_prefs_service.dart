@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/notification_prefs.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 
 class NotificationPrefsService {
   NotificationPrefsService._();
@@ -26,5 +27,6 @@ class NotificationPrefsService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.notificationPrefs);
   }
 }

@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../app_db.dart';
 import '../models/experience_row.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 class ExperienceService {
@@ -29,6 +30,7 @@ class ExperienceService {
       ).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await OutboxEnqueuer.upsertSingletonByUserId(T.experience);
   }
 
   /// Patches a subset of experience columns. Creates the row if missing.

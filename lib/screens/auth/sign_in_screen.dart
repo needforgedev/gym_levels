@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/services/auth_service.dart';
+import '../../data/sync/initial_sync.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/screen_base.dart';
 import 'auth_widgets.dart';
@@ -58,9 +59,12 @@ class _SignInScreenState extends State<SignInScreen> {
     );
     if (!mounted) return;
     if (result.ok) {
-      // S3b will eventually re-route through a "Welcome back" + initial
-      // sync screen; for v1.x.0's S1 milestone we land on Home directly.
-      context.go('/home');
+      // S3b — first sign-in on this device hydrates from cloud via
+      // /welcome-back; subsequent sign-ins (or sign-out + sign-in on
+      // a device that already has data) skip straight to /home.
+      final needsHydration = await InitialSync.needed();
+      if (!mounted) return;
+      context.go(needsHydration ? '/welcome-back' : '/home');
     } else {
       setState(() {
         _loading = false;

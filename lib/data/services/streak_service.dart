@@ -4,6 +4,7 @@ import '../app_db.dart';
 import '../models/streak.dart';
 import '../models/streak_freeze_event.dart';
 import '../schema.dart';
+import '../sync/outbox_enqueuer.dart';
 import '_now.dart';
 
 class StreakService {
@@ -24,6 +25,7 @@ class StreakService {
     final db = await AppDb.instance;
     await db.insert(T.streaks, row.toRow(),
         conflictAlgorithm: ConflictAlgorithm.abort);
+    await OutboxEnqueuer.upsertSingletonByUserId(T.streaks);
     return row;
   }
 
@@ -31,6 +33,7 @@ class StreakService {
     final db = await AppDb.instance;
     await db.insert(T.streaks, streak.toRow(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+    await OutboxEnqueuer.upsertSingletonByUserId(T.streaks);
   }
 
   /// PRD §9A.5 — log a freeze consumption. Caller is responsible for also
@@ -40,9 +43,11 @@ class StreakService {
     String? reason,
   }) async {
     final db = await AppDb.instance;
-    return db.insert(
+    final id = await db.insert(
       T.streakFreezeEvents,
       StreakFreezeEvent(usedOn: dayEpoch, reason: reason).toRow(),
     );
+    await OutboxEnqueuer.upsertAutoinc(table: T.streakFreezeEvents, id: id);
+    return id;
   }
 }

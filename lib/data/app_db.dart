@@ -125,15 +125,120 @@ class AppDb {
   }
 
   static Future<void> _onUpgrade(Database db, int from, int to) async {
-    // Future migrations: keep them forward-only, idempotent, and unit-tested.
+    // Forward-only migrations. Each numbered branch is idempotent —
+    // safe to re-run if a previous attempt failed mid-way (sqflite
+    // does not transactionally roll back DDL on iOS / Android).
+    //
     // PRD §17 risk — back the DB file up to `gym_levels.db.pre-migration`
-    // before running each upgrade once migration logic lands.
+    // before running each upgrade once migration logic lands. (TODO).
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    // v1 → v2: Scope B sync columns + sync_outbox + sync_state. Lands
+    // with socials_plan.md S3.0. Adds three nullable columns to every
+    // cloud-mirrored local table, plus two new local tables.
+    if (from < 2 && to >= 2) {
+      await _migrateV1toV2(db);
+    }
+
     await db.insert(T.schemaVersion, {
       CSchemaVersion.version: to,
       CSchemaVersion.appliedAt: now,
       CSchemaVersion.note: 'upgraded from v$from',
     });
+  }
+
+  /// v1 → v2: Adds `cloud_id`, `cloud_updated_at`, `cloud_deleted_at`
+  /// columns to every cloud-mirrored local table, then creates the
+  /// `sync_outbox` and `sync_state` tables.
+  ///
+  /// The column-add operations are individually idempotent — sqflite's
+  /// `ALTER TABLE ADD COLUMN` succeeds-or-throws-with-duplicate. Wrap
+  /// each in a try/catch that swallows duplicate-column exceptions so
+  /// re-runs after a partial failure resume cleanly.
+  static Future<void> _migrateV1toV2(Database db) async {
+    const syncedTables = <String>[
+      T.player,
+      T.goals,
+      T.experience,
+      T.schedule,
+      T.notificationPrefs,
+      T.playerClass,
+      T.workouts,
+      T.sets,
+      T.muscleRanks,
+      T.quests,
+      T.streaks,
+      T.streakFreezeEvents,
+      T.weightLogs,
+    ];
+
+    for (final table in syncedTables) {
+      await _addColumnIfMissing(db, table, CSync.cloudId, 'TEXT');
+      await _addColumnIfMissing(db, table, CSync.cloudUpdatedAt, 'INTEGER');
+      await _addColumnIfMissing(db, table, CSync.cloudDeletedAt, 'INTEGER');
+    }
+
+    // sync_outbox + indexes.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${T.syncOutbox} (
+        ${CSyncOutbox.id}            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${CSyncOutbox.tableName}     TEXT NOT NULL,
+        ${CSyncOutbox.localRowId}    INTEGER NOT NULL,
+        ${CSyncOutbox.cloudId}       TEXT NOT NULL,
+        ${CSyncOutbox.opType}        TEXT NOT NULL CHECK (${CSyncOutbox.opType} IN ('upsert', 'delete')),
+        ${CSyncOutbox.payloadJson}   TEXT,
+        ${CSyncOutbox.createdAt}     INTEGER NOT NULL,
+        ${CSyncOutbox.attemptCount}  INTEGER NOT NULL DEFAULT 0,
+        ${CSyncOutbox.lastAttemptAt} INTEGER,
+        ${CSyncOutbox.lastError}     TEXT,
+        ${CSyncOutbox.pushedAt}      INTEGER
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pending '
+      'ON ${T.syncOutbox}(${CSyncOutbox.createdAt}) '
+      'WHERE ${CSyncOutbox.pushedAt} IS NULL',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pushed '
+      'ON ${T.syncOutbox}(${CSyncOutbox.pushedAt}) '
+      'WHERE ${CSyncOutbox.pushedAt} IS NOT NULL',
+    );
+
+    // sync_state singleton.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${T.syncState} (
+        ${CSyncState.id}                 INTEGER PRIMARY KEY CHECK (${CSyncState.id} = 1),
+        ${CSyncState.lastFullSyncAt}     INTEGER,
+        ${CSyncState.initialSyncTable}   TEXT,
+        ${CSyncState.initialSyncOffset}  INTEGER NOT NULL DEFAULT 0,
+        ${CSyncState.lastOutboxDrainAt}  INTEGER
+      )
+    ''');
+    // Seed the singleton row if it doesn't already exist.
+    await db.rawInsert(
+      'INSERT OR IGNORE INTO ${T.syncState} (${CSyncState.id}) VALUES (1)',
+    );
+  }
+
+  /// Idempotent ALTER TABLE ADD COLUMN. sqflite throws on duplicate
+  /// columns; catch and ignore so re-running the migration after a
+  /// partial failure is safe.
+  static Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+    } on DatabaseException catch (e) {
+      // SQLite returns "duplicate column name" when the column already
+      // exists — ignore. Any other error rethrows.
+      if (!e.toString().toLowerCase().contains('duplicate column')) {
+        rethrow;
+      }
+    }
   }
 
   /// Seeds the `exercises` table from [exerciseCatalog] if empty.
