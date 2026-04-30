@@ -644,6 +644,11 @@ class _MenuList extends StatelessWidget {
             onTap: () => GoRouter.of(context).go('/ranks'),
           ),
           _MenuRow(
+            label: 'Friends',
+            icon: Icons.people_alt_outlined,
+            onTap: () => GoRouter.of(context).go('/friends'),
+          ),
+          _MenuRow(
             label: 'Edit Onboarding',
             icon: Icons.edit_outlined,
             onTap: () => GoRouter.of(context).go('/training-days'),

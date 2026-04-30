@@ -12,6 +12,8 @@ import 'screens/auth/verify_email_screen.dart';
 import 'screens/auth/contacts_permission_screen.dart';
 import 'screens/auth/friends_found_screen.dart';
 import 'screens/auth/welcome_back_screen.dart';
+import 'screens/friends/friends_screen.dart';
+import 'screens/friends/username_search_screen.dart';
 import 'screens/body_fat_screen.dart';
 import 'screens/body_type_screen.dart';
 import 'screens/boss_completion_screen.dart';
@@ -141,6 +143,16 @@ final appRouter = GoRouter(
         );
         return const SizedBox.shrink();
       },
+    ),
+
+    // S5 — friend graph hub + username search.
+    GoRoute(
+      path: '/friends',
+      builder: (_, _) => const FriendsScreen(),
+    ),
+    GoRoute(
+      path: '/friends/search',
+      builder: (_, _) => const UsernameSearchScreen(),
     ),
 
     // Section 1 — Player Registration (display name → local sqflite)
