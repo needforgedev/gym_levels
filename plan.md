@@ -728,9 +728,10 @@ Phase 4.1a socials + Scope B full sync (v1.1) — see socials_plan.md
     ├─ S2  username + phone collection
     ├─ S3  cloud sync engine (outbox + per-table push/pull + wire to ~10 services)
     ├─ S3b initial-sync UX (welcome-back screen + paginated hydration + resumable)
+    ├─ S3c incremental pull (periodic delta polling for cross-device ~30s convergence)
     ├─ S4  contact-match flow (hash + RPC + matched-friends screen)
     ├─ S5  friend graph (request/accept/block/invite-link/handle-search)
-    ├─ S6  leaderboard screen (3 tabs + realtime subscription)
+    ├─ S6  leaderboard screen (3 tabs + realtime subscription deferred to S6b)
     ├─ S7  settings + disconnect-socials + delete-account + pause-sync
     ├─ S8  anti-cheat triggers + RLS hardening + adversarial tests
     ├─ S9  privacy policy + App Store labels (incl. health-data disclosure)

@@ -20,8 +20,8 @@ typedef ContactMatchResult = ({
 });
 
 /// End-to-end contact-match flow:
-///   1. Request the OS contacts permission (handled by
-///      [FlutterContacts.requestPermission]).
+///   1. Request the OS contacts permission (read-only) via the
+///      flutter_contacts 2.x `permissions` sub-API.
 ///   2. Read every contact + phone, normalize to E.164.
 ///   3. SHA-256-hash each with the server salt (PhoneHasher).
 ///   4. POST the hashes to `find_users_by_phone_hashes` RPC.
@@ -69,8 +69,14 @@ class ContactMatchService {
     }
 
     // Triggers the system permission prompt on first call. Subsequent
-    // calls are silent and return the cached grant.
-    final granted = await FlutterContacts.requestPermission(readonly: true);
+    // calls are silent and return the cached grant. iOS 18+ may
+    // return `limited` (partial-access) — treat it as granted; we'll
+    // get whichever contacts the user chose to share.
+    final status = await FlutterContacts.permissions.request(
+      PermissionType.read,
+    );
+    final granted = status == PermissionStatus.granted ||
+        status == PermissionStatus.limited;
     if (!granted) {
       return (
         ok: false,
@@ -94,13 +100,11 @@ class ContactMatchService {
       defaultDialCode = PhoneHasher.extractDialCode(myPhone);
     }
 
-    final contacts = await FlutterContacts.getContacts(
-      withProperties: true,
-      // We don't need photos / accounts / groups — keeps the read
-      // light on devices with thousands of contacts.
-      withPhoto: false,
-      withAccounts: false,
-      withGroups: false,
+    // Only request the `phone` property — keeps the read fast on
+    // devices with thousands of contacts and avoids loading photos /
+    // emails / postal addresses we'd never use.
+    final contacts = await FlutterContacts.getAll(
+      properties: {ContactProperty.phone},
     );
 
     final hashes = <String>{};

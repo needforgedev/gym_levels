@@ -48,7 +48,7 @@ Let users sign up, find friends already on the app via their phone contacts, and
 | Layer | What lives here | Network behaviour |
 |---|---|---|
 | **Layer 1 — Local sqflite (unchanged on the read path)** | Every domain table. App reads exclusively from sqflite. Cold launch, all gameplay, all reads — zero network hops. | Identical to today's app. Workouts log, ranks recompute, quests progress, leaderboard caches — all from local rows. |
-| **Layer 2 — Supabase mirror (new, opt-in)** | A 1:1 cloud mirror of every Layer 1 table for users who've signed up + opted in. Source of truth on device-switch / reinstall. | Pushes opportunistically after every local write; retries via outbox queue when offline. Pulls only on first-time sign-in (initial hydration) and Realtime subscriptions for the leaderboard. |
+| **Layer 2 — Supabase mirror (new, opt-in)** | A 1:1 cloud mirror of every Layer 1 table for users who've signed up + opted in. Source of truth on device-switch / reinstall. | Pushes opportunistically after every local write; retries via outbox queue when offline. Pulls happen in three modes: (1) first-time sign-in initial hydration (S3b), (2) periodic incremental polling every ~30s while foregrounded for cross-device convergence (S3c), (3) Realtime subscriptions for the leaderboard (deferred to S6b). |
 
 **Critical property — offline-first preserved:** the app **never blocks on a network call**. Every gameplay write commits to local sqflite first; the cloud push is a fire-and-forget side effect that queues if offline. Layer 1 has zero dependency on Layer 2. If Supabase is down, the app keeps working; pushes accumulate in the outbox and drain when the connection returns.
 
@@ -150,13 +150,13 @@ For every table mirrored from Layer 1, the Supabase row carries:
 **Tables mirrored (~13):**
 
 - `public_profiles` — same schema as Scope A. Driving table for leaderboard + contact match.
-- `cloud_workouts` — id, user_id, started_at, ended_at, xp_earned, volume_kg, plus sync columns
-- `cloud_sets` — id, workout_id (FK to cloud_workouts.cloud_id), user_id, exercise_id (refs deterministic local catalog id), set_number, weight_kg, reps, rpe, is_pr, xp_earned, completed_at, sync columns
-- `cloud_weight_logs` — id, user_id, logged_on, weight_kg, note, sync columns
-- `cloud_quests` — id, user_id, type, kind_key, title, target, progress, xp_reward, issued_at, expires_at, completed_at, sync columns
-- `cloud_muscle_ranks` — id, user_id, muscle, rank, sub_rank, rank_xp, updated_at
-- `cloud_streak` — singleton-per-user; current, longest, last_workout_on, freezes_available, freezes_used, schedule_match_count
-- `cloud_streak_freeze_events` — append-only; id, user_id, used_on, reason
+- `cloud_workouts` — cloud_id, user_id, started_at, ended_at, xp_earned, volume_kg, note, plus sync columns
+- `cloud_sets` — cloud_id, workout_id (FK to cloud_workouts.cloud_id), user_id, exercise_id (refs deterministic local catalog id), set_number, weight_kg, reps, rpe, is_pr, xp_earned, completed_at, sync columns
+- `cloud_weight_logs` — cloud_id, user_id, logged_on, weight_kg, note, sync columns
+- `cloud_quests` — cloud_id, user_id, type, title, description, target, progress, xp_reward, issued_at, expires_at, completed_at, locked, sync columns
+- `cloud_muscle_ranks` — cloud_id, user_id, muscle, rank, sub_rank, rank_xp, updated_at
+- `cloud_streak` — singleton-per-user; current, longest, last_active_date, freezes_remaining, freezes_period_start
+- `cloud_streak_freeze_events` — append-only; cloud_id, user_id, used_on, reason
 - `cloud_goals` — singleton-per-user; body_type, priority_muscles[], target_weight_kg, weight_direction
 - `cloud_experience` — singleton-per-user; tenure, equipment[], limitations[], training_styles[]
 - `cloud_schedule` — singleton-per-user; days[], session_minutes
@@ -398,7 +398,7 @@ In Scope A this was a separate ~half-day phase. Under Scope B, `cloud_goals` / `
 8. Calibrating loader.
 9. **Contacts permission** (S4) — "find friends already on the app" → on grant, hash + match.
 10. **Friends Found** screen (S4) — matched users with `Add Friend` buttons. Empty-state shows invite link prominently (S5).
-11. **Home** — bottom-tab Leaderboard now visible.
+11. **Home** — 5th bottom-tab "Ranks" (the friend-only leaderboard) now visible.
 12. Daily use: every workout finish writes to local sqflite synchronously; sync outbox enqueues pushes for the new `cloud_workouts` row + every new `cloud_sets` row + the updated `public_profiles` summary. Outbox drains opportunistically. **The user never waits for the network**; they see the Workout Complete screen immediately.
 
 ## 4.2 Second device — same user reinstalls
@@ -424,6 +424,7 @@ In Scope A this was a separate ~half-day phase. Under Scope B, `cloud_goals` / `
 | S2 — Username + phone | 2 |
 | S3 — Cloud sync engine (outbox + per-table push/pull + wire-up to ~10 services) | 6-8 |
 | S3b — Initial-sync UX (welcome-back + paginated hydration + resumable) | 2 |
+| S3c — Incremental pull (added 2026-04-30 — periodic delta polling for cross-device convergence) | 0.5 |
 | S4 — Contact-match | 2-3 |
 | S5 — Friend graph + invite link | 3-4 |
 | S6 — Leaderboard | 4 |

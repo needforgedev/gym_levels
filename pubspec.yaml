@@ -58,7 +58,10 @@ dependencies:
   # to find_users_by_phone_hashes RPC. flutter_contacts handles the
   # native runtime-permission prompt itself; we still declare the
   # static permission in AndroidManifest + Info.plist.
-  flutter_contacts: ^1.1.9+1
+  # Bumped to 2.x because 1.1.9 force-unwraps a Contacts framework
+  # return value that became optional in the iOS 26 SDK — crashes the
+  # iOS Runner at app launch (before any Dart code runs).
+  flutter_contacts: ^2.0.2
   # share_plus — invite-link share sheet on the empty-state of the
   # Friends Found screen. Native UIActivityViewController on iOS,
   # Intent.ACTION_SEND on Android.
