@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -5,16 +6,22 @@ import '../theme/tokens.dart';
 
 enum AppTab { home, quests, leaderboard, streak, profile }
 
-/// Floating glass pill tab bar — translucent backdrop-blurred surface with
-/// a violet border, layered shadows (outer drop, violet ambient, inset
-/// highlights), and an amber-glowing active pill. Matches the design v2
-/// `TabBar` (`design/v2/shared.jsx`).
+/// Floating glass pill tab bar with a center hero leaderboard button.
 ///
-/// Size: 66px tall, fully rounded (radius 33). Sits 24px from the bottom
-/// safe area with 16px horizontal margin. Callers should layer this over
-/// the screen body using a Stack and reserve ~110px of bottom padding on
-/// scrollable content so it doesn't end up flush behind the bar.
-class AppTabBar extends StatelessWidget {
+/// Layout (per the v1-improvements design — `shared.jsx` lines 145-297):
+///   • 66px tall translucent-glass pill (24px backdrop blur, violet
+///     border, layered shadows, inner radial ambient + top shine).
+///   • 4 regular pills (Home, Quests, Streak, Profile) — amber gradient
+///     active state with a soft glow.
+///   • A 64×64 **circular gold "Leaderboard" button** that floats 28px
+///     above the bar's top edge with a pulsing animation, rotating
+///     conic-gradient shimmer, and a halo ring that scales out.
+///   • "LEADERBOARD" label sits BELOW the bar in amber mono.
+///
+/// Caller should layer this over the screen body via `Stack` and
+/// reserve [InAppShell.tabBarSafeBottom] worth of bottom padding on
+/// scrollable content so nothing sits under it.
+class AppTabBar extends StatefulWidget {
   const AppTabBar({
     super.key,
     required this.active,
@@ -24,13 +31,127 @@ class AppTabBar extends StatelessWidget {
   final AppTab active;
   final ValueChanged<AppTab> onChange;
 
-  static const _items = [
+  @override
+  State<AppTabBar> createState() => _AppTabBarState();
+}
+
+class _AppTabBarState extends State<AppTabBar>
+    with TickerProviderStateMixin {
+  late final AnimationController _pulse;
+  late final AnimationController _halo;
+  late final AnimationController _shimmer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat(reverse: true);
+    _halo = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+    _shimmer = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    _halo.dispose();
+    _shimmer.dispose();
+    super.dispose();
+  }
+
+  static const _normalTabs = [
     (AppTab.home, Icons.home_outlined, 'Home'),
     (AppTab.quests, Icons.menu_book_outlined, 'Quests'),
-    (AppTab.leaderboard, Icons.leaderboard_outlined, 'Ranks'),
+    // Center spacer goes here in the row (handled separately).
     (AppTab.streak, Icons.local_fire_department_outlined, 'Streak'),
     (AppTab.profile, Icons.emoji_events_outlined, 'Profile'),
   ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      // Bar (66) + label space below (~16) + floating button rise (~28).
+      // Stack uses Clip.none so the floating button paints outside this
+      // box anyway; the height just gives the layout something to lay
+      // its children against.
+      height: 86,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          // Bar surface — translucent glass pill with backdrop blur.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _BarSurface(
+              regular: _normalTabs,
+              active: widget.active,
+              onChange: widget.onChange,
+            ),
+          ),
+          // Floating gold Leaderboard button (centered, raised above
+          // the bar). Rendered OUTSIDE the bar's ClipRRect so it can
+          // extend upward freely.
+          Positioned(
+            top: -8,
+            child: _LeaderboardHero(
+              active: widget.active == AppTab.leaderboard,
+              pulse: _pulse,
+              halo: _halo,
+              shimmer: _shimmer,
+              onTap: () => widget.onChange(AppTab.leaderboard),
+            ),
+          ),
+          // "LEADERBOARD" label sits below the bar.
+          Positioned(
+            bottom: -2,
+            child: Text(
+              'LEADERBOARD',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+                color: AppPalette.amber,
+                shadows: [
+                  Shadow(
+                    color: AppPalette.amber.withValues(alpha: 0.6),
+                    blurRadius: 8,
+                  ),
+                  Shadow(
+                    color: Colors.black.withValues(alpha: 0.8),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Bar surface (translucent glass pill) ────────────────────────
+
+class _BarSurface extends StatelessWidget {
+  const _BarSurface({
+    required this.regular,
+    required this.active,
+    required this.onChange,
+  });
+
+  final List<(AppTab, IconData, String)> regular;
+  final AppTab active;
+  final ValueChanged<AppTab> onChange;
 
   @override
   Widget build(BuildContext context) {
@@ -41,8 +162,6 @@ class AppTabBar extends StatelessWidget {
         child: Container(
           height: 66,
           decoration: BoxDecoration(
-            // Two-stop gradient on translucent dark — the design's
-            // `linear-gradient(180deg, rgba(26,15,43,0.72) 0%, rgba(10,6,18,0.78) 100%)`.
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
@@ -71,7 +190,7 @@ class AppTabBar extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              // Inner violet ambient gradient — radial wash from below.
+              // Inner violet ambient gradient.
               Positioned.fill(
                 child: IgnorePointer(
                   child: Container(
@@ -112,22 +231,40 @@ class AppTabBar extends StatelessWidget {
                   ),
                 ),
               ),
+              // 4 regular pills + invisible spacer in the middle.
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: _items.map((i) {
-                    final tab = i.$1;
-                    final icon = i.$2;
-                    final label = i.$3;
-                    final isActive = tab == active;
-                    return _TabPill(
-                      icon: icon,
-                      label: label,
-                      active: isActive,
-                      onTap: () => onChange(tab),
-                    );
-                  }).toList(),
+                  children: [
+                    _TabPill(
+                      icon: regular[0].$2,
+                      label: regular[0].$3,
+                      active: active == regular[0].$1,
+                      onTap: () => onChange(regular[0].$1),
+                    ),
+                    _TabPill(
+                      icon: regular[1].$2,
+                      label: regular[1].$3,
+                      active: active == regular[1].$1,
+                      onTap: () => onChange(regular[1].$1),
+                    ),
+                    // Center spacer so the floating leaderboard button
+                    // has room without overlapping the side pills.
+                    const SizedBox(width: 64),
+                    _TabPill(
+                      icon: regular[2].$2,
+                      label: regular[2].$3,
+                      active: active == regular[2].$1,
+                      onTap: () => onChange(regular[2].$1),
+                    ),
+                    _TabPill(
+                      icon: regular[3].$2,
+                      label: regular[3].$3,
+                      active: active == regular[3].$1,
+                      onTap: () => onChange(regular[3].$1),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -137,6 +274,8 @@ class AppTabBar extends StatelessWidget {
     );
   }
 }
+
+// ─── Regular tab pill ────────────────────────────────────────────
 
 class _TabPill extends StatelessWidget {
   const _TabPill({
@@ -162,10 +301,7 @@ class _TabPill extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          // Trimmed from 66 → 58 so 5 pills fit on a 375pt-wide screen
-          // (iPhone SE 3rd gen) without overflow. 5 × 58 + 20 inner +
-          // 32 outer margin = 342 ≤ 375.
-          width: 58,
+          width: 56,
           height: 54,
           decoration: BoxDecoration(
             gradient: active
@@ -203,7 +339,7 @@ class _TabPill extends StatelessWidget {
                 transform: Matrix4.translationValues(0, active ? -1 : 0, 0),
                 child: Icon(
                   icon,
-                  size: 21,
+                  size: 20,
                   color: color,
                   shadows: active
                       ? [
@@ -239,4 +375,206 @@ class _TabPill extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Floating gold leaderboard button ────────────────────────────
+
+class _LeaderboardHero extends StatelessWidget {
+  const _LeaderboardHero({
+    required this.active,
+    required this.pulse,
+    required this.halo,
+    required this.shimmer,
+    required this.onTap,
+  });
+
+  final bool active;
+  final AnimationController pulse;
+  final AnimationController halo;
+  final AnimationController shimmer;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 88,
+          height: 88,
+          child: Center(
+            child: AnimatedBuilder(
+              animation: pulse,
+              builder: (_, _) {
+                final p = pulse.value; // 0..1
+                final scale = 1.0 + 0.04 * p;
+                final lift = -2 * p;
+                return Transform.translate(
+                  offset: Offset(0, lift),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: SizedBox(
+                      width: 64,
+                      height: 64,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          // Halo — outer ring that scales + fades.
+                          AnimatedBuilder(
+                            animation: halo,
+                            builder: (_, _) {
+                              final t = halo.value; // 0..1
+                              final scaleH = 1.0 + 0.15 * t;
+                              final op = (0.6 - 0.6 * t).clamp(0.0, 1.0);
+                              return IgnorePointer(
+                                child: Transform.scale(
+                                  scale: scaleH,
+                                  child: Container(
+                                    width: 80,
+                                    height: 80,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppPalette.amber.withValues(
+                                            alpha: 0.5 * op),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          // Gold ball.
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                center: Alignment(-0.4, -0.4),
+                                colors: [
+                                  Color(0xFFFBBF24),
+                                  AppPalette.amber,
+                                  Color(0xFF8C5814),
+                                ],
+                                stops: [0, 0.55, 1.0],
+                              ),
+                              border: Border.all(
+                                color: const Color(0xFFFCD34D),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                // Void ring so the bar visually parts
+                                // around the floating button.
+                                BoxShadow(
+                                  color: AppPalette.voidBg
+                                      .withValues(alpha: 0.9),
+                                  blurRadius: 0,
+                                  spreadRadius: 4,
+                                ),
+                                BoxShadow(
+                                  color: AppPalette.amber
+                                      .withValues(alpha: 0.85),
+                                  blurRadius: 28,
+                                ),
+                                BoxShadow(
+                                  color: AppPalette.amber
+                                      .withValues(alpha: 0.45),
+                                  blurRadius: 22,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Conic-gradient shimmer (rotating sweep over the ball).
+                          AnimatedBuilder(
+                            animation: shimmer,
+                            builder: (_, _) => IgnorePointer(
+                              child: ClipOval(
+                                child: SizedBox(
+                                  width: 60,
+                                  height: 60,
+                                  child: Transform.rotate(
+                                    angle: shimmer.value * 2 * math.pi,
+                                    child: const _ConicShimmer(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Trophy / barbell-figure icon.
+                          Icon(
+                            active
+                                ? Icons.emoji_events
+                                : Icons.fitness_center,
+                            size: 26,
+                            color: AppPalette.voidBg,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                offset: const Offset(0, 1),
+                              ),
+                              Shadow(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConicShimmer extends StatelessWidget {
+  const _ConicShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: const _ConicShimmerPainter());
+  }
+}
+
+class _ConicShimmerPainter extends CustomPainter {
+  const _ConicShimmerPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 60° highlight wedge sweeping. Approximated with a SweepGradient.
+    final rect = Rect.fromCircle(
+      center: Offset(size.width / 2, size.height / 2),
+      radius: size.width / 2,
+    );
+    final paint = Paint()
+      ..blendMode = BlendMode.overlay
+      ..shader = const SweepGradient(
+        colors: [
+          Colors.transparent,
+          Colors.transparent,
+          Color(0x59FFFFFF), // ~35% white
+          Colors.transparent,
+          Colors.transparent,
+        ],
+        stops: [0, 0.10, 0.18, 0.30, 1.0],
+      ).createShader(rect);
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 2,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConicShimmerPainter old) => false;
 }

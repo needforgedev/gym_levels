@@ -30,9 +30,10 @@ class InAppShell extends StatelessWidget {
   final bool showHeader;
 
   /// Vertical clearance the floating tab bar needs at the bottom of any
-  /// scrollable content. = bar height (66) + bottom inset (24) + breathing
-  /// room (~20).
-  static const double tabBarSafeBottom = 110;
+  /// scrollable content. = bar surface height (66) + bottom inset (24) +
+  /// floating gold leaderboard button rise (~28) + breathing (~20).
+  /// Bumped from 110 → 138 for the v1-improvements design.
+  static const double tabBarSafeBottom = 138;
 
   void _onTab(BuildContext context, AppTab tab) {
     switch (tab) {

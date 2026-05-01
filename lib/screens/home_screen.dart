@@ -103,52 +103,223 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<PlayerState>();
-    // The floating tab bar sits 24px above the home indicator. Reserve
-    // tabBarSafeBottom + safe-area bottom inset on the ListView so the
-    // last item (START WORKOUT) clears the bar instead of being clipped
-    // behind it.
     final safeBottom = MediaQuery.of(context).padding.bottom;
     return InAppShell(
       active: AppTab.home,
       title: 'HOME',
       showHeader: false,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          0,
-          0,
-          0,
-          InAppShell.tabBarSafeBottom + safeBottom,
-        ),
+      child: Stack(
         children: [
-          _TopBar(
-            name: s.playerName,
-            className: s.playerClass.displayName,
-            onAvatar: () => context.go('/profile'),
+          // Atmospheric hero-character bg silhouette anchored top-right.
+          // Faded with a vertical mask so the bottom half of the screen
+          // stays clean for the START WORKOUT CTA.
+          const Positioned(
+            right: -30,
+            top: 40,
+            width: 260,
+            height: 380,
+            child: IgnorePointer(child: _HeroSilhouetteBg()),
           ),
-          _LevelXpStrip(level: s.level, totalXp: s.totalXp),
-          _XpProgressBlock(
-            level: s.level,
-            xpInto: s.xpCurrent,
-            xpMax: s.xpMax,
+          // Faint violet grid texture (very subtle) — mirrors the design.
+          const Positioned.fill(
+            child: IgnorePointer(child: _GridTextureBg()),
           ),
-          _StatRow(
-            totalWorkoutsFuture: _totalWorkouts,
-            streak: s.streak,
-            onStreakTap: () => context.go('/streak'),
-          ),
-          _NextWorkoutBlock(
-            future: _session,
-            onTap: _openTodaysWorkout,
-          ),
-          _TodaysQuestBlock(future: _dailyQuests),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: _StartWorkoutButton(onTap: _startWorkout),
+          ListView(
+            padding: EdgeInsets.fromLTRB(
+              0,
+              0,
+              0,
+              InAppShell.tabBarSafeBottom + safeBottom,
+            ),
+            children: [
+              _TopBar(
+                name: s.playerName,
+                className: s.playerClass.displayName,
+                level: s.level,
+                onAvatar: () => context.go('/profile'),
+                onOpenFriends: () => context.go('/friends'),
+              ),
+              _LevelXpStrip(level: s.level, totalXp: s.totalXp),
+              _XpProgressBlock(
+                level: s.level,
+                xpInto: s.xpCurrent,
+                xpMax: s.xpMax,
+              ),
+              _StatRow(
+                totalWorkoutsFuture: _totalWorkouts,
+                streak: s.streak,
+                onStreakTap: () => context.go('/streak'),
+                onTotalWorkoutsTap: () => context.go('/workouts'),
+              ),
+              _NextWorkoutBlock(
+                future: _session,
+                onTap: _openTodaysWorkout,
+              ),
+              _TodaysQuestBlock(future: _dailyQuests),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: _StartWorkoutButton(onTap: _startWorkout),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+// ─── Background atmospherics (hero silhouette + grid) ─────────────
+
+class _HeroSilhouetteBg extends StatelessWidget {
+  const _HeroSilhouetteBg();
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.black, Colors.black, Colors.transparent],
+        stops: [0, 0.6, 1.0],
+      ).createShader(rect),
+      child: Opacity(
+        opacity: 0.30,
+        child: Image.asset(
+          'assets/hero-character.png',
+          fit: BoxFit.cover,
+          alignment: Alignment.topRight,
+        ),
+      ),
+    );
+  }
+}
+
+class _GridTextureBg extends StatelessWidget {
+  const _GridTextureBg();
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: const _GridPainter());
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  const _GridPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppPalette.purpleSoft.withValues(alpha: 0.04)
+      ..strokeWidth = 1;
+    const step = 32.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridPainter old) => false;
+}
+
+// ─── Hex frame helper ─────────────────────────────────────────────
+
+class _HexFrame extends StatelessWidget {
+  const _HexFrame({
+    required this.size,
+    required this.child,
+    this.fillColor,
+    this.strokeColor,
+    this.glow = false,
+    this.strokeWidth = 2,
+  });
+
+  final double size;
+  final Widget child;
+  final Color? fillColor;
+  final Color? strokeColor;
+  final bool glow;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = fillColor ?? AppPalette.purple.withValues(alpha: 0.15);
+    final stroke = strokeColor ?? AppPalette.purple.withValues(alpha: 0.6);
+    return SizedBox(
+      width: size,
+      height: size * 1.155,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _HexPainter(
+                fill: fill,
+                stroke: stroke,
+                strokeWidth: strokeWidth,
+                glow: glow,
+              ),
+            ),
+          ),
+          Positioned.fill(child: Center(child: child)),
+        ],
+      ),
+    );
+  }
+}
+
+class _HexPainter extends CustomPainter {
+  const _HexPainter({
+    required this.fill,
+    required this.stroke,
+    required this.strokeWidth,
+    required this.glow,
+  });
+  final Color fill;
+  final Color stroke;
+  final double strokeWidth;
+  final bool glow;
+
+  Path _hexPath(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.5, h * 0.0175)
+      ..lineTo(w * 0.96, h * 0.25)
+      ..lineTo(w * 0.96, h * 0.75)
+      ..lineTo(w * 0.5, h * 0.9825)
+      ..lineTo(w * 0.04, h * 0.75)
+      ..lineTo(w * 0.04, h * 0.25)
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _hexPath(size);
+    if (glow) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = stroke
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
+    }
+    canvas.drawPath(path, Paint()..color = fill);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..color = stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HexPainter old) =>
+      old.fill != fill ||
+      old.stroke != stroke ||
+      old.strokeWidth != strokeWidth ||
+      old.glow != glow;
 }
 
 class _HomeSession {
@@ -157,90 +328,70 @@ class _HomeSession {
   final Workout? doneToday;
 }
 
-// ─── Top bar (greeting + name + class + avatar) ────────────
+// ─── Top bar (hex avatar + friends hex + welcome + class) ────
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.name,
     required this.className,
+    required this.level,
     required this.onAvatar,
+    required this.onOpenFriends,
   });
   final String name;
   final String className;
+  final int level;
   final VoidCallback onAvatar;
+  final VoidCallback onOpenFriends;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome back,',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: AppPalette.textMuted,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Text(
-                      _displayName(name),
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: AppPalette.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text('🔥', style: TextStyle(fontSize: 22)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ShaderMask(
-                  shaderCallback: (rect) => const LinearGradient(
-                    colors: [AppPalette.amber, AppPalette.amberSoft],
-                  ).createShader(rect),
-                  child: Text(
-                    'CLASS • $className',
-                    style: AppType.displaySM(color: Colors.white).copyWith(
-                      fontSize: 14,
-                      letterSpacing: 2,
-                    ),
-                  ),
+          // Hex row — avatar (with LV badge) on the left, Friends hex
+          // (with cyan notification dot) on the right.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _PlayerHexAvatar(level: level, onTap: onAvatar),
+              _FriendsHex(onTap: onOpenFriends),
+            ],
+          ),
+          const SizedBox(height: 22),
+          // Eyebrow — mono-styled like the design.
+          Text(
+            'WELCOME BACK,',
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2.5,
+              color: AppPalette.purpleSoft,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Hero name — display-font, 56pt to match the design.
+          Text(
+            _displayName(name),
+            style: AppType.displayLG(color: AppPalette.textPrimary)
+                .copyWith(
+              fontSize: 56,
+              height: 0.95,
+              letterSpacing: 1.5,
+              shadows: [
+                Shadow(
+                  color: AppPalette.purpleSoft.withValues(alpha: 0.25),
+                  blurRadius: 24,
                 ),
               ],
             ),
+            overflow: TextOverflow.ellipsis,
           ),
-          GestureDetector(
-            onTap: onAvatar,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const _HeroAvatar(size: 48),
-                Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppPalette.amber,
-                      border: Border.all(color: AppPalette.voidBg, width: 2),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: 14),
+          // Class badge: hex (X-pattern logo) + two-line stack on the right.
+          _ClassBadge(name: _displayName(name), className: className),
         ],
       ),
     );
@@ -252,45 +403,302 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// Stylized character avatar — circular gradient disc with a violet ring,
-/// outer glow, and a simple painted face inside. Approximates the design v2
-/// `HeroAvatar` SVG (`design/v2/screens-home.jsx`).
-class _HeroAvatar extends StatelessWidget {
-  const _HeroAvatar({this.size = 48});
-  final double size;
+class _PlayerHexAvatar extends StatelessWidget {
+  const _PlayerHexAvatar({required this.level, required this.onTap});
+  final int level;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2D1B4E), Color(0xFF1A0F2B)],
-        ),
-        border: Border.all(
-          color: AppPalette.purple.withValues(alpha: 0.5),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppPalette.purple.withValues(alpha: 0.3),
-            blurRadius: 16,
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 70,
+            height: 76,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                _HexFrame(
+                  size: 62,
+                  fillColor: AppPalette.purple.withValues(alpha: 0.18),
+                  strokeColor: AppPalette.purpleSoft.withValues(alpha: 0.7),
+                  glow: true,
+                  child: ClipPath(
+                    clipper: const _HexClipper(),
+                    child: Image.asset(
+                      'assets/hero-bust.png',
+                      width: 54,
+                      height: 54,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                // Circular LV pill at bottom-right of the hex.
+                Positioned(
+                  right: 0,
+                  bottom: 6,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 22),
+                    height: 22,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(11),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF2A1845), Color(0xFF1A0F2B)],
+                      ),
+                      border: Border.all(
+                        color: AppPalette.purpleSoft,
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                        BoxShadow(
+                          color: AppPalette.purpleSoft.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '$level',
+                      style: TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                        color: AppPalette.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'PROFILE',
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 9,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.w700,
+              color: AppPalette.textMuted,
+            ),
           ),
         ],
-      ),
-      child: ClipOval(
-        child: Image.asset(
-          'assets/hero-bust.png',
-          fit: BoxFit.cover,
-        ),
       ),
     );
   }
 }
+
+class _FriendsHex extends StatelessWidget {
+  const _FriendsHex({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                _HexFrame(
+                  size: 48,
+                  fillColor: AppPalette.purple.withValues(alpha: 0.18),
+                  strokeColor: AppPalette.purpleSoft.withValues(alpha: 0.7),
+                  glow: true,
+                  child: Icon(
+                    Icons.people_alt_outlined,
+                    size: 22,
+                    color: AppPalette.textPrimary,
+                  ),
+                ),
+                // Teal notification dot.
+                Positioned(
+                  right: 6,
+                  top: 0,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppPalette.teal,
+                      border:
+                          Border.all(color: AppPalette.voidBg, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppPalette.teal.withValues(alpha: 0.8),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'FRIENDS',
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 9,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.w700,
+              color: AppPalette.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HexClipper extends CustomClipper<Path> {
+  const _HexClipper();
+  @override
+  Path getClip(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.5, h * 0.04)
+      ..lineTo(w * 0.96, h * 0.28)
+      ..lineTo(w * 0.96, h * 0.78)
+      ..lineTo(w * 0.5, h)
+      ..lineTo(w * 0.08, h * 0.78)
+      ..lineTo(w * 0.08, h * 0.28)
+      ..close();
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+/// Class badge — hex icon (X-pattern logo) on the left, stacked
+/// `name` (display font) + `MASS BUILDER CLASS` mono caption on the
+/// right. Mirrors `screens-home.jsx` lines 156-170.
+class _ClassBadge extends StatelessWidget {
+  const _ClassBadge({required this.name, required this.className});
+  final String name;
+  final String className;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _HexFrame(
+          size: 48,
+          fillColor: AppPalette.purple.withValues(alpha: 0.18),
+          strokeColor: AppPalette.purpleSoft.withValues(alpha: 0.55),
+          strokeWidth: 1.5,
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CustomPaint(painter: const _XPatternPainter()),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              name,
+              style: AppType.displaySM(color: AppPalette.textPrimary)
+                  .copyWith(
+                fontSize: 18,
+                letterSpacing: 1.5,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${className.toUpperCase()} CLASS',
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 10,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w700,
+                color: AppPalette.purpleSoft,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// X-pattern logo: two diagonal lines + a circle at each corner.
+/// Matches the design's class-hex content.
+class _XPatternPainter extends CustomPainter {
+  const _XPatternPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = AppPalette.purpleSoft
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(size.width * 0.21, size.height * 0.21),
+      Offset(size.width * 0.79, size.height * 0.79),
+      stroke,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.79, size.height * 0.21),
+      Offset(size.width * 0.21, size.height * 0.79),
+      stroke,
+    );
+    final dot = Paint()..color = AppPalette.purpleSoft;
+    final r = size.width * 0.083;
+    canvas.drawCircle(
+      Offset(size.width * 0.21, size.height * 0.21),
+      r,
+      dot,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.79, size.height * 0.21),
+      r,
+      dot,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.21, size.height * 0.79),
+      r,
+      dot,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.79, size.height * 0.79),
+      r,
+      dot,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _XPatternPainter old) => false;
+}
+
+// (Old `_HeroAvatar` widget removed — replaced by `_PlayerHexAvatar`
+// at the top of this file as part of the v1-improvements design.)
 
 // ─── Level + Total XP strip ────────────────────────────────
 class _LevelXpStrip extends StatelessWidget {
@@ -501,11 +909,13 @@ class _StatRow extends StatelessWidget {
     required this.totalWorkoutsFuture,
     required this.streak,
     required this.onStreakTap,
+    required this.onTotalWorkoutsTap,
   });
 
   final Future<int> totalWorkoutsFuture;
   final int streak;
   final VoidCallback onStreakTap;
+  final VoidCallback onTotalWorkoutsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -517,12 +927,13 @@ class _StatRow extends StatelessWidget {
             child: FutureBuilder<int>(
               future: totalWorkoutsFuture,
               builder: (ctx, snap) => _StatTile(
-                kicker: 'TOTAL',
+                kicker: 'TOTAL WORKOUTS',
                 value: '${snap.data ?? 0}',
-                caption: 'Workouts',
+                caption: 'Workouts Completed',
                 icon: Icons.fitness_center,
                 accent: AppPalette.purpleSoft,
                 valueColor: AppPalette.textPrimary,
+                onTap: onTotalWorkoutsTap,
               ),
             ),
           ),
@@ -531,12 +942,11 @@ class _StatRow extends StatelessWidget {
             child: _StatTile(
               kicker: 'STREAK',
               value: '$streak',
-              caption: streak > 0 ? 'On fire!' : 'Start today',
-              captionColor: AppPalette.streak,
-              captionItalic: true,
+              caption: streak > 0 ? 'Days in a row' : 'Start today',
+              captionColor: AppPalette.amber,
               icon: Icons.local_fire_department,
-              accent: AppPalette.streak,
-              valueColor: AppPalette.streak,
+              accent: AppPalette.amber,
+              valueColor: AppPalette.amber,
               valueGlow: true,
               animateIcon: streak > 0,
               onTap: onStreakTap,
@@ -557,7 +967,6 @@ class _StatTile extends StatefulWidget {
     required this.accent,
     required this.valueColor,
     this.captionColor,
-    this.captionItalic = false,
     this.valueGlow = false,
     this.animateIcon = false,
     this.onTap,
@@ -570,7 +979,6 @@ class _StatTile extends StatefulWidget {
   final Color accent;
   final Color valueColor;
   final Color? captionColor;
-  final bool captionItalic;
   final bool valueGlow;
   final bool animateIcon;
   final VoidCallback? onTap;
@@ -642,34 +1050,35 @@ class _StatTileState extends State<_StatTile>
                 Text(
                   widget.caption,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: widget.captionColor ?? AppPalette.textMuted,
-                    fontStyle: widget.captionItalic
-                        ? FontStyle.italic
-                        : FontStyle.normal,
-                    fontWeight: widget.captionItalic
-                        ? FontWeight.w500
-                        : FontWeight.w400,
+                    fontWeight: widget.captionColor == null
+                        ? FontWeight.w400
+                        : FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
+          // Hex icon — matches the design's hexagonal accent shape on
+          // each stat card. Animates a pulsing glow on streak when
+          // `animateIcon` is true.
           AnimatedBuilder(
             animation: _ctl,
             builder: (context, _) {
-              final glow = widget.animateIcon
-                  ? 6 + _ctl.value * 8
-                  : 6.0;
-              return Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: widget.accent.withValues(alpha: 0.15),
+              return _HexFrame(
+                size: 36,
+                fillColor: widget.accent.withValues(alpha: 0.18),
+                strokeColor: widget.accent.withValues(
+                  alpha: widget.animateIcon
+                      ? 0.55 + _ctl.value * 0.35
+                      : 0.55,
                 ),
+                strokeWidth: 1.5,
+                glow: widget.animateIcon,
                 child: Icon(
                   widget.icon,
-                  size: 22,
+                  size: 18,
                   color: widget.accent,
                   shadows: widget.animateIcon
                       ? [
@@ -677,7 +1086,7 @@ class _StatTileState extends State<_StatTile>
                             color: widget.accent.withValues(
                               alpha: 0.5 + _ctl.value * 0.4,
                             ),
-                            blurRadius: glow.toDouble(),
+                            blurRadius: 6 + _ctl.value * 8,
                           ),
                         ]
                       : null,
@@ -1108,6 +1517,15 @@ class _QuestCard extends StatelessWidget {
 }
 
 // ─── Start Workout teal CTA ────────────────────────────────
+/// START WORKOUT CTA — outlined teal pill with bolt-circle on the left,
+/// big display-font label centered, and a chevron-right on the right.
+/// Matches `screens-home.jsx` lines 327-352:
+///   • 60px tall, 30 radius (full pill)
+///   • Translucent teal gradient bg (`rgba(25,227,227,0.18)` →
+///     `rgba(25,227,227,0.08)`), 2px solid teal border
+///   • Outer teal glow (24px blur, 50% alpha) + inset inner glow
+///   • Bolt-circle (36×36) on left, label in 22pt teal display font
+///     with text-shadow glow, chevron-right on the right
 class _StartWorkoutButton extends StatelessWidget {
   const _StartWorkoutButton({required this.onTap});
   final VoidCallback onTap;
@@ -1118,40 +1536,94 @@ class _StartWorkoutButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(30),
         child: Container(
-          height: 58,
-          alignment: Alignment.center,
+          height: 60,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: const LinearGradient(
+            borderRadius: BorderRadius.circular(30),
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF19E3E3), Color(0xFF0EC6C6)],
+              colors: [
+                AppPalette.teal.withValues(alpha: 0.18),
+                AppPalette.teal.withValues(alpha: 0.08),
+              ],
             ),
+            border: Border.all(color: AppPalette.teal, width: 2),
             boxShadow: [
               BoxShadow(
-                color: AppPalette.teal.withValues(alpha: 0.30),
+                color: AppPalette.teal.withValues(alpha: 0.5),
                 blurRadius: 24,
-                offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
             children: [
-              const Icon(
-                Icons.play_arrow,
-                size: 18,
-                color: AppPalette.voidBg,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'START WORKOUT',
-                style: AppType.displaySM(color: AppPalette.voidBg).copyWith(
-                  fontSize: 16,
-                  letterSpacing: 1.2,
+              // Inset inner glow — stays beneath the content.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.center,
+                          radius: 1.0,
+                          colors: [
+                            AppPalette.teal.withValues(alpha: 0.15),
+                            Colors.transparent,
+                          ],
+                          stops: const [0, 0.7],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Bolt-circle on the left.
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppPalette.teal.withValues(alpha: 0.18),
+                      border: Border.all(
+                        color: AppPalette.teal.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.bolt,
+                      size: 18,
+                      color: AppPalette.teal,
+                    ),
+                  ),
+                  // Centered label — display font, glowing teal.
+                  Text(
+                    'START WORKOUT',
+                    style: AppType.displayLG(color: AppPalette.teal)
+                        .copyWith(
+                      fontSize: 22,
+                      letterSpacing: 3,
+                      height: 1,
+                      shadows: [
+                        Shadow(
+                          color: AppPalette.teal.withValues(alpha: 0.6),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: AppPalette.teal,
+                  ),
+                ],
               ),
             ],
           ),
