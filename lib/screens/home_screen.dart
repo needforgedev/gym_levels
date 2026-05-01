@@ -921,38 +921,45 @@ class _StatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: FutureBuilder<int>(
-              future: totalWorkoutsFuture,
-              builder: (ctx, snap) => _StatTile(
-                kicker: 'TOTAL WORKOUTS',
-                value: '${snap.data ?? 0}',
-                caption: 'Workouts Completed',
-                icon: Icons.fitness_center,
-                accent: AppPalette.purpleSoft,
-                valueColor: AppPalette.textPrimary,
-                onTap: onTotalWorkoutsTap,
+      // IntrinsicHeight + stretch makes both cards take the height of
+      // the taller one, so the violet TOTAL WORKOUTS card and the
+      // amber STREAK card always render at identical sizes (regardless
+      // of caption length / wrap).
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: FutureBuilder<int>(
+                future: totalWorkoutsFuture,
+                builder: (ctx, snap) => _StatTile(
+                  kicker: 'TOTAL WORKOUTS',
+                  value: '${snap.data ?? 0}',
+                  caption: 'Workouts Completed',
+                  icon: Icons.fitness_center,
+                  accent: AppPalette.purpleSoft,
+                  valueColor: AppPalette.textPrimary,
+                  onTap: onTotalWorkoutsTap,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatTile(
-              kicker: 'STREAK',
-              value: '$streak',
-              caption: streak > 0 ? 'Days in a row' : 'Start today',
-              captionColor: AppPalette.amber,
-              icon: Icons.local_fire_department,
-              accent: AppPalette.amber,
-              valueColor: AppPalette.amber,
-              valueGlow: true,
-              animateIcon: streak > 0,
-              onTap: onStreakTap,
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatTile(
+                kicker: 'STREAK',
+                value: '$streak',
+                caption: streak > 0 ? 'Days in a row' : 'Start today',
+                captionColor: AppPalette.amber,
+                icon: Icons.local_fire_department,
+                accent: AppPalette.amber,
+                valueColor: AppPalette.amber,
+                valueGlow: true,
+                animateIcon: streak > 0,
+                onTap: onStreakTap,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1023,10 +1030,16 @@ class _StatTileState extends State<_StatTile>
               children: [
                 Text(
                   widget.kicker,
+                  // Mono 9pt to match the design (`screens-home.jsx`
+                  // line 223). Single-line so "TOTAL WORKOUTS" doesn't
+                  // wrap and force the card taller than its sibling.
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
                     color: AppPalette.textMuted,
                   ),
                 ),

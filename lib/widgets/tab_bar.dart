@@ -97,11 +97,15 @@ class _AppTabBarState extends State<AppTabBar>
               onChange: widget.onChange,
             ),
           ),
-          // Floating gold Leaderboard button (centered, raised above
-          // the bar). Rendered OUTSIDE the bar's ClipRRect so it can
-          // extend upward freely.
+          // Floating gold Leaderboard button — extends ~27px above the
+          // bar's top edge to match the design's `marginTop: -28`.
+          //
+          // Bar surface top sits at y=20 within this Stack (Stack is
+          // 86 tall, bar 66 at bottom). Design wants ball top at
+          // bar_top − 27 = y=−7. The 88×88 SizedBox centers the 64×64
+          // gold ball, so SizedBox top is 12px above ball top → −19.
           Positioned(
-            top: -8,
+            top: -19,
             child: _LeaderboardHero(
               active: widget.active == AppTab.leaderboard,
               pulse: _pulse,
@@ -110,9 +114,11 @@ class _AppTabBarState extends State<AppTabBar>
               onTap: () => widget.onChange(AppTab.leaderboard),
             ),
           ),
-          // "LEADERBOARD" label sits below the bar.
+          // "LEADERBOARD" label — sits INSIDE the bar near the bottom
+          // edge, matching the design's `bottom: -16` from the
+          // floating button (which lands ≈9px above the bar bottom).
           Positioned(
-            bottom: -2,
+            bottom: 9,
             child: Text(
               'LEADERBOARD',
               style: TextStyle(
