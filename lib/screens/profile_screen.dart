@@ -213,7 +213,11 @@ class _HeaderCard extends StatelessWidget {
               ),
               _SmallIconButton(
                 icon: Icons.edit_outlined,
-                onTap: () => GoRouter.of(context).go('/register'),
+                // Profile-edit modal lands in Chunk C. Until then,
+                // the pencil is a no-op (the single Hero Name was
+                // claimed in Join Now and is rate-limited 30 days
+                // server-side, so there's nothing to edit here yet).
+                onTap: () {},
               ),
             ],
           ),

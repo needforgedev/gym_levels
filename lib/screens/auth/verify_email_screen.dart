@@ -61,10 +61,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   }
 
   void _onVerified() {
-    // Onboarding chain hand-off — once S2 (username + phone) screens
-    // land, route to /username here. For v1.x.0's S1 milestone the
-    // existing local onboarding starts at /register.
-    context.go('/register');
+    // Identity (handle + phone + Code of Grind) was collected up-front
+    // in the Join Now form, so verify-email hands straight off to
+    // /age — first screen of the local onboarding chain.
+    context.go('/age');
   }
 
   Future<void> _resend() async {
@@ -127,7 +127,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   void _skipForNow() {
     // User opts to keep going offline-first. Socials stay locked until
     // they verify, but the rest of onboarding proceeds normally.
-    context.go('/register');
+    context.go('/age');
   }
 
   @override

@@ -126,13 +126,16 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             ),
           ),
 
-          // Bottom: loader → CTA.
+          // Bottom: loader → CTA. Per the v1-improvements design:
+          //   • Amber subhead "EARNED, NEVER GIVEN." sits above the CTA
+          //   • Gold button reads "NO CROWN WITHOUT THE GRIND"
+          //   • Skips the deleted hype slides — routes straight to /signin
           Positioned(
             left: 40,
             right: 40,
             bottom: 60 + MediaQuery.of(context).padding.bottom,
             child: _ready
-                ? _BeginButton(onTap: () => context.go('/hype/ranks'))
+                ? _BeginBlock(onTap: () => context.go('/signin'))
                 : _LoaderStrip(controller: _loader),
           ),
         ],
@@ -328,9 +331,9 @@ class _LoaderStrip extends StatelessWidget {
   }
 }
 
-// ─── TAP TO BEGIN amber pill ──────────────────────────────────────────
-class _BeginButton extends StatelessWidget {
-  const _BeginButton({required this.onTap});
+// ─── "EARNED, NEVER GIVEN." subhead + "NO CROWN WITHOUT THE GRIND" CTA ──
+class _BeginBlock extends StatelessWidget {
+  const _BeginBlock({required this.onTap});
   final VoidCallback onTap;
 
   @override
@@ -346,46 +349,68 @@ class _BeginButton extends StatelessWidget {
           child: child,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(28),
-          child: Container(
-            height: 56,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppPalette.amber, AppPalette.amberSoft],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppPalette.amber.withValues(alpha: 0.5),
-                  blurRadius: 30,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'EARNED, NEVER GIVEN.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 3,
+              color: AppPalette.amber,
+              shadows: [
+                Shadow(
+                  color: AppPalette.amber.withValues(alpha: 0.45),
+                  blurRadius: 16,
                 ),
               ],
             ),
-            child: Text(
-              'TAP TO BEGIN',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-                color: AppPalette.voidBg,
-                shadows: [
-                  Shadow(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    blurRadius: 0,
-                    offset: const Offset(0, 1),
+          ),
+          const SizedBox(height: 14),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(28),
+              child: Container(
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppPalette.amber, AppPalette.amberSoft],
                   ),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppPalette.amber.withValues(alpha: 0.5),
+                      blurRadius: 30,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'NO CROWN WITHOUT THE GRIND',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.8,
+                    color: AppPalette.voidBg,
+                    shadows: [
+                      Shadow(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        blurRadius: 0,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

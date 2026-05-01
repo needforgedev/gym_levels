@@ -35,7 +35,9 @@ class _LimitationsScreenState extends State<LimitationsScreen> {
     if (_selected.isEmpty) return;
     await ExperienceService.patch(limitations: _selected);
     if (!mounted) return;
-    context.go('/training-styles');
+    // Skip /training-styles — removed from the linear onboarding.
+    // /calibrating/3 transitions to Section 4 (physical attrs).
+    context.go('/calibrating/3');
   }
 
   static const _options = [
@@ -75,7 +77,7 @@ class _LimitationsScreenState extends State<LimitationsScreen> {
       subtitle: 'Mapping constraint flags…',
       title: 'Do you have any injuries or limitations?',
       nextEnabled: _selected.isNotEmpty,
-      onBack: () => context.go('/equipment'),
+      onBack: () => context.go('/tenure'),
       onNext: _save,
       child: Wrap(
         spacing: 8,

@@ -39,7 +39,10 @@ class _TrainingDaysScreenState extends State<TrainingDaysScreen> {
     final onboarded = context.read<PlayerState>().isOnboarded;
     await ScheduleService.patch(days: _days.toList()..sort());
     if (!mounted) return;
-    context.go(onboarded ? '/home' : '/session-minutes');
+    // Skip /session-minutes — removed from linear onboarding.
+    // PlanGenerator falls back to a 45-min default until S7 settings
+    // exposes the field for explicit edit.
+    context.go(onboarded ? '/home' : '/calibrating/5');
   }
 
   void _applyPreset(String preset) {

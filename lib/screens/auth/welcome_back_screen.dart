@@ -68,9 +68,10 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       if (!mounted) return;
       // If the cloud profile didn't have `onboarded_at` (returning
-      // user who never finished onboarding), fall through to /register
-      // so they pick up where they left off.
-      context.go(isOnboardedNotifier.value ? '/home' : '/register');
+      // user who never finished onboarding), fall through to /age —
+      // identity (handle + phone) is already in the cloud row at
+      // this point, so the only thing left is the local onboarding.
+      context.go(isOnboardedNotifier.value ? '/home' : '/age');
     }
   }
 

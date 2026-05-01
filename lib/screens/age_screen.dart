@@ -43,7 +43,7 @@ class _AgeScreenState extends State<AgeScreen> {
       percent: 12,
       subtitle: 'Recording temporal coordinates…',
       title: 'Current age detected:',
-      onBack: () => context.go('/register'),
+      onBack: () => context.go('/signin'),
       onNext: _save,
       child: BigSlider(
         value: _age,

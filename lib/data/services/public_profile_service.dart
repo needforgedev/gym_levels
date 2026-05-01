@@ -30,10 +30,13 @@ class PublicProfileService {
   /// | 'taken')` on failure, or `(available: true, reason: null)` on
   /// success.
   ///
-  /// Rate-limited server-side at 30 calls / minute / user.
+  /// Callable pre-auth — the Join Now form on [AuthScreen] runs this
+  /// while the user is still anonymous. See migration
+  /// `010_username_check_public.sql` for the matching server-side
+  /// grant.
   static Future<UsernameCheck> checkUsernameAvailable(String candidate) async {
-    if (!AuthService.isAuthenticated) {
-      return (available: false, reason: 'not_authenticated');
+    if (!SupabaseConfig.isConfigured) {
+      return (available: false, reason: 'not_configured');
     }
     try {
       final rows = await _client.rpc(
@@ -124,6 +127,18 @@ class PublicProfileService {
       }
       return (ok: true, errorMessage: null);
     } on PostgrestException catch (e) {
+      // 23505 = unique_violation. The TOCTOU window between the RPC
+      // availability check and our INSERT is small but real — surface
+      // a friendly message so the user retries with a different name
+      // instead of seeing the raw Postgres error.
+      if (e.code == '23505' ||
+          e.message.toLowerCase().contains('duplicate key') ||
+          e.message.toLowerCase().contains('unique')) {
+        return (
+          ok: false,
+          errorMessage: 'That handle was just taken. Pick another.',
+        );
+      }
       return (ok: false, errorMessage: e.message);
     } catch (_) {
       return (ok: false, errorMessage: 'Unexpected error. Try again.');

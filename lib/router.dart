@@ -2,12 +2,9 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/age_screen.dart';
 import 'state/onboarding_flag.dart';
+import 'screens/auth/auth_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
-import 'screens/auth/phone_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
-import 'screens/auth/sign_in_screen.dart';
-import 'screens/auth/sign_up_screen.dart';
-import 'screens/auth/username_screen.dart';
 import 'screens/auth/verify_email_screen.dart';
 import 'screens/auth/contacts_permission_screen.dart';
 import 'screens/auth/friends_found_screen.dart';
@@ -32,11 +29,8 @@ import 'screens/notification_prefs_screen.dart';
 import 'screens/paywall_screen.dart';
 import 'screens/priority_muscles_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/progression_hype_screen.dart';
 import 'screens/quests_screen.dart';
-import 'screens/ranks_hype_screen.dart';
 import 'screens/ranks_screen.dart';
-import 'screens/registration_screen.dart';
 import 'screens/reward_style_screen.dart';
 import 'screens/session_minutes_screen.dart';
 import 'screens/streak_milestone_screen.dart';
@@ -62,8 +56,11 @@ import 'game/quest_engine.dart';
 
 /// Full PRD §8 onboarding flow:
 ///
-///   /  → /hype/ranks → /hype/progression
-///   → /register → /age → /height                       (Section 1 — teal)
+///   /  (splash)  →  /signin (Sign In / Join Now toggle — Join Now
+///                            collects email + Hero Name + phone +
+///                            password + Code of Grind in one form)
+///   → /verify-email
+///   → /age → /height                                   (Section 1 — teal)
 ///   → /calibrating/1
 ///   → /body-type → /priority-muscles → /reward-style   (Section 2 — purple)
 ///   → /calibrating/2
@@ -94,18 +91,17 @@ final appRouter = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, _) => const WelcomeScreen()),
 
-    // Pre-quiz hype
-    GoRoute(path: '/hype/ranks', builder: (_, _) => const RanksHypeScreen()),
+    // Auth — combined Sign In / Join Now toggle screen (v1-improvements
+    // design). Both routes resolve to the same screen with different
+    // initial tab.
     GoRoute(
-      path: '/hype/progression',
-      builder: (_, _) => const ProgressionHypeScreen(),
+      path: '/signup',
+      builder: (_, _) => const AuthScreen(initialMode: AuthMode.signUp),
     ),
-
-    // Auth (Phase 4.1a S1) — pre-onboarding gate. Sign Up at install
-    // (Path A) per socials_plan.md §6. /signin available from the
-    // sign-up screen for users on a new device.
-    GoRoute(path: '/signup', builder: (_, _) => const SignUpScreen()),
-    GoRoute(path: '/signin', builder: (_, _) => const SignInScreen()),
+    GoRoute(
+      path: '/signin',
+      builder: (_, _) => const AuthScreen(initialMode: AuthMode.signIn),
+    ),
     GoRoute(
       path: '/verify-email',
       builder: (_, _) => const VerifyEmailScreen(),
@@ -162,12 +158,10 @@ final appRouter = GoRouter(
       builder: (_, _) => const LeaderboardScreen(),
     ),
 
-    // Section 1 — Player Registration (display name → local sqflite)
-    // followed by socials S2 (cloud handle + phone) before flowing into
-    // the rest of the local-only onboarding chain.
-    GoRoute(path: '/register', builder: (_, _) => const RegistrationScreen()),
-    GoRoute(path: '/username', builder: (_, _) => const UsernameScreen()),
-    GoRoute(path: '/phone', builder: (_, _) => const PhoneScreen()),
+    // Section 1 — Player Registration. Identity (email + handle +
+    // phone + password + Code of Grind) is collected up-front in
+    // /signin (Join Now tab), so /age is the first onboarding screen
+    // that runs after auth + verify-email.
     GoRoute(path: '/age', builder: (_, _) => const AgeScreen()),
     GoRoute(path: '/height', builder: (_, _) => const HeightScreen()),
 

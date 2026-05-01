@@ -32,7 +32,10 @@ class _BodyTypeScreenState extends State<BodyTypeScreen> {
     if (_value == null) return;
     await GoalsService.patch(bodyType: _value);
     if (!mounted) return;
-    context.go('/priority-muscles');
+    // Skip /priority-muscles + /reward-style — removed from the
+    // linear onboarding per the design's 12-question flow. Both
+    // routes still exist for Settings → Edit Onboarding (S7).
+    context.go('/calibrating/2');
   }
 
   static const _options = [

@@ -165,7 +165,15 @@ class PlanGenerator {
 
     final goals = await GoalsService.get();
     final experience = await ExperienceService.get();
-    final owned = Set<String>.from(experience?.equipment ?? const []);
+    // Equipment fallback: the design's 12-question onboarding skips
+    // the equipment screen entirely, so a fresh signup persists an
+    // empty list. Treat that as "bodyweight only" so the plan still
+    // generates a usable session — when the user later sets equipment
+    // explicitly via Settings, the filter switches to their gear.
+    final equipmentRaw = experience?.equipment ?? const <String>[];
+    final owned = Set<String>.from(
+      equipmentRaw.isEmpty ? const ['bodyweight'] : equipmentRaw,
+    );
     final avoid = _avoidedMuscles(experience?.limitations ?? const []);
     final priority = goals?.priorityMuscles ?? const <String>[];
 

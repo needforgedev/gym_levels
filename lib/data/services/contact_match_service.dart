@@ -30,8 +30,8 @@ typedef ContactMatchResult = ({
 ///
 /// Privacy posture: phone numbers never leave the device — only their
 /// salted SHA-256 hashes are sent. The same salt is used on the user's
-/// own row when [PhoneScreen] saves their phone, so cross-user hash
-/// equality is the matching criterion.
+/// own row when AuthScreen's Join Now form persists their phone, so
+/// cross-user hash equality is the matching criterion.
 class ContactMatchService {
   ContactMatchService._();
 

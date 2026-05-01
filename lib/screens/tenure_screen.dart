@@ -30,7 +30,9 @@ class _TenureScreenState extends State<TenureScreen> {
   Future<void> _save() async {
     await ExperienceService.patch(tenure: _value);
     if (!mounted) return;
-    context.go('/equipment');
+    // Skip /equipment (handled by PlanGenerator's bodyweight default).
+    // The design's QInjuries → /limitations is the next step.
+    context.go('/limitations');
   }
 
   static const _options = [
