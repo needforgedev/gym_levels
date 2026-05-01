@@ -40,7 +40,8 @@ class LeaderboardService {
           .from('public_profiles')
           .select(
             'user_id, username, display_name, avatar_key, '
-            'level, total_xp, weekly_xp, current_streak, longest_streak',
+            'level, total_xp, weekly_xp, monthly_xp, '
+            'current_streak, longest_streak',
           )
           .inFilter('user_id', allIds)
           .filter('deleted_at', 'is', null)

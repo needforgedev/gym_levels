@@ -13,6 +13,7 @@ import 'workout_service.dart';
 ///   • `level`           — derived from total XP via [XpEngine.resolve]
 ///   • `total_xp`        — sum of every workout's `xp_earned`
 ///   • `weekly_xp`       — sum since most recent Monday 00:00 UTC
+///   • `monthly_xp`      — sum since 1st of current UTC month
 ///   • `current_streak`  — from `streaks.current`
 ///   • `longest_streak`  — from `streaks.longest`
 ///   • `last_active_at`  — most recent workout end timestamp
@@ -38,6 +39,7 @@ class LeaderboardStatsService {
     try {
       final totalXp = await WorkoutService.totalXp();
       final weeklyXp = await WorkoutService.weeklyXp();
+      final monthlyXp = await WorkoutService.monthlyXp();
       final streak = await StreakService.get();
       final recent = await WorkoutService.recent(limit: 1);
       final lastActiveSecs = recent.isEmpty
@@ -49,6 +51,7 @@ class LeaderboardStatsService {
         'level': level,
         'total_xp': totalXp,
         'weekly_xp': weeklyXp,
+        'monthly_xp': monthlyXp,
         'current_streak': streak?.current ?? 0,
         'longest_streak': streak?.longest ?? 0,
       };

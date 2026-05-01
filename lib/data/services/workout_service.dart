@@ -158,6 +158,23 @@ class WorkoutService {
     return (r.first['x'] as num?)?.toInt() ?? 0;
   }
 
+  /// XP earned since the 1st of the current UTC month. Drives the
+  /// leaderboard's Month tab + the `public_profiles.monthly_xp`
+  /// column (which the server's 1st-of-month cron resets to 0).
+  static Future<int> monthlyXp() async {
+    final now = DateTime.now().toUtc();
+    final firstOfMonth = DateTime.utc(now.year, now.month, 1);
+    final firstEpoch = firstOfMonth.millisecondsSinceEpoch ~/ 1000;
+    final db = await AppDb.instance;
+    final r = await db.rawQuery(
+      'SELECT COALESCE(SUM(${CWorkout.xpEarned}), 0) AS x '
+      'FROM ${T.workouts} '
+      'WHERE ${CWorkout.userId} = ? AND ${CWorkout.endedAt} >= ?',
+      [1, firstEpoch],
+    );
+    return (r.first['x'] as num?)?.toInt() ?? 0;
+  }
+
   /// Most recent finished workout whose `ended_at` falls on the current
   /// local calendar day. `null` if the user hasn't finished anything today.
   /// Drives the "already done" state on Home + Today's Workout.
