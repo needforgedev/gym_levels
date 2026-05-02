@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../data/models/streak.dart';
+import '../data/services/account_service.dart';
 import '../data/services/auth_service.dart';
 import '../data/services/player_service.dart';
 import '../data/services/streak_service.dart';
@@ -26,8 +27,9 @@ import '../widgets/tab_bar.dart';
 ///   • Player Class card — amber-bordered with dumbbell icon, MASS BUILDER
 ///     headline, descriptor.
 ///   • BODY STATS section: Age / Height / BMI / Weight rows in a card.
-///   • Menu list: Muscle Rankings, Edit Onboarding, Notifications,
-///     Subscription, Sign Out (red).
+///   • Menu list: Muscle Rankings, Friends, Edit Onboarding,
+///     Notifications, Subscription, Sign Out (red), Delete Account
+///     (red — wipes cloud + local with two-step confirmation).
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -70,11 +72,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppPalette.bgCard,
         title: const Text(
-          'Sign out and wipe data?',
+          'Sign out?',
           style: TextStyle(color: AppPalette.textPrimary),
         ),
         content: const Text(
-          'This deletes the player profile, every workout, every set, and resets onboarding. The exercise catalog stays.',
+          'Your local data on this device will be cleared. Sign back in '
+          'and your workouts, streak, and progress will be re-downloaded '
+          'from the cloud.',
           style: TextStyle(color: AppPalette.textMuted),
         ),
         actions: [
@@ -92,9 +96,132 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (ok != true) return;
+
+    // Drop the auth token + outbox + sync state first so a racing drain
+    // can't push under stale identity. Then wipe the local domain rows
+    // — on next sign-in InitialSync hydrates everything from cloud.
+    await AuthService.signOut();
     await PlayerService.deleteAll();
     isOnboardedNotifier.value = false;
     if (!mounted) return;
+    await context.read<PlayerState>().refresh();
+    if (!mounted) return;
+    context.go('/');
+  }
+
+  Future<void> _deleteAccount() async {
+    // Step 1 — explain consequences.
+    final firstOk = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppPalette.bgCard,
+        title: const Text(
+          'Delete your account?',
+          style: TextStyle(color: AppPalette.textPrimary),
+        ),
+        content: const Text(
+          'This permanently deletes your account and every workout, '
+          'set, streak, and friend on our servers AND on this device. '
+          'This cannot be undone.',
+          style: TextStyle(color: AppPalette.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL',
+                style: TextStyle(color: AppPalette.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CONTINUE',
+                style: TextStyle(color: AppPalette.danger)),
+          ),
+        ],
+      ),
+    );
+    if (firstOk != true || !mounted) return;
+
+    // Step 2 — destructive intent test (type DELETE).
+    final controller = TextEditingController();
+    final secondOk = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppPalette.bgCard,
+          title: const Text(
+            'Type DELETE to confirm',
+            style: TextStyle(color: AppPalette.textPrimary),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: AppPalette.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'DELETE',
+              hintStyle: TextStyle(color: AppPalette.textDisabled),
+            ),
+            onChanged: (_) => setLocal(() {}),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('CANCEL',
+                  style: TextStyle(color: AppPalette.textMuted)),
+            ),
+            TextButton(
+              onPressed: controller.text.trim() == 'DELETE'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('DELETE FOREVER',
+                  style: TextStyle(color: AppPalette.danger)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (secondOk != true || !mounted) return;
+
+    // Show a non-dismissable spinner while the RPC runs — server-side
+    // delete cascades through 14 tables and can take a couple seconds.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppPalette.danger),
+      ),
+    );
+
+    final result = await AccountService.deleteAccount();
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // dismiss spinner
+
+    if (!result.ok) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppPalette.bgCard,
+          title: const Text(
+            'Delete failed',
+            style: TextStyle(color: AppPalette.danger),
+          ),
+          content: Text(
+            result.errorMessage ?? 'Could not delete account.',
+            style: const TextStyle(color: AppPalette.textMuted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK',
+                  style: TextStyle(color: AppPalette.textPrimary)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    isOnboardedNotifier.value = false;
     await context.read<PlayerState>().refresh();
     if (!mounted) return;
     context.go('/');
@@ -161,7 +288,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Menu list.
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                child: _MenuList(onSignOut: _signOut),
+                child: _MenuList(
+                  onSignOut: _signOut,
+                  onDeleteAccount: _deleteAccount,
+                ),
               ),
             ],
           );
@@ -626,8 +756,12 @@ class _StatRow extends StatelessWidget {
 
 // ─── Menu list ─────────────────────────────────────────────
 class _MenuList extends StatelessWidget {
-  const _MenuList({required this.onSignOut});
+  const _MenuList({
+    required this.onSignOut,
+    required this.onDeleteAccount,
+  });
   final VoidCallback onSignOut;
+  final VoidCallback onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -665,6 +799,12 @@ class _MenuList extends StatelessWidget {
             icon: Icons.logout,
             danger: true,
             onTap: onSignOut,
+          ),
+          _MenuRow(
+            label: 'Delete Account',
+            icon: Icons.delete_forever_outlined,
+            danger: true,
+            onTap: onDeleteAccount,
           ),
         ],
       ),
