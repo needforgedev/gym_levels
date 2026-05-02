@@ -6,7 +6,6 @@ import '../data/services/player_service.dart';
 import '../state/player_state.dart';
 import '../widgets/big_slider.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 1 Screen 4 — age slider 16–80.
 class AgeScreen extends StatefulWidget {

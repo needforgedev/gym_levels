@@ -6,7 +6,6 @@ import '../data/services/player_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 4 Screen 16 — body fat estimate slider.
 /// Matches design v2 (`design/v2/onboarding-questions.jsx` QBodyFat):

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../data/services/goals_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 2 Screen 6 — body type with scan-frame figure + 4 cards.
 /// Matches design v2 (`design/v2/onboarding-questions.jsx` QBodyType).

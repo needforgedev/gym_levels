@@ -21,7 +21,7 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 | Phase | Name | PRD roadmap | Window | Status |
 |---|---|---|---|---|
 | **0** | Foundation — design system + UI shell | (pre-v0.1) | done | `[x]` |
-| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all 21 screens + §1.5i per-screen persistence + §1.5k post-onboarding editing + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
+| **1** | v0.1 Internal Alpha — raw-sqflite data model + full onboarding | Wk 1–6 | `[~]` §1.1 data layer + §1.3 seed + §1.5 all onboarding screens (~16 questions + calibrating + outro) + §1.5i per-screen persistence + §1.5k post-onboarding editing + §1.6 PlayerState-over-service + §1.9 **demo-ready workout tracker** (picker + logger persistence + history + detail) **done** ✓ — remaining: backup/restore (1.7), integration tests (1.8) |
 | **2** | v0.5 Closed Beta — logger, XP, ranks, daily quests, paywall, push | Wk 7–12 | `[~]` §2.1 all 5 engines + §2.2 core wiring + multi-exercise sessions + Workout Complete summary screen + §2.3 Today's Workout (profile chips + completed-today + priority-weighted plan) + §2.4 Profile real per-muscle ranks + dedicated `/ranks` drill-down **done** ✓; remaining: 2.5 notifications, 2.6 paywall IAP, 2.7 analytics flush, 2.8 crash reporting |
 | **3** | v1.0 Public Launch — weekly/boss quests, celebrations, polish, store | Wk 13–16 | `[~]` §3.1 weekly pool + rotation + §3.2 boss pool seeding + Boss Detail drill-down + §3.7 Weight Tracker (incl. log modal) + §3.8 Player Class sheet (catalog-driven) **done** ✓; remaining: Pro-gating, boss-completion celebration, settings hub, data export/import, advanced analytics, accessibility pass, store submission |
 | **4** | v1.1+ Post-MVP — **socials + leaderboard + full cloud sync (Scope B, in progress, see [socials_plan.md](socials_plan.md))**, health integrations, AI, web | +6 wk → +6 mo | `[~]` S0–S6 core done (2026-04-30) — auth, push, pull, welcome-back hydration, cross-device convergence, contact-match, friend graph, **friend-only leaderboard (3 tabs + bottom-nav entry + auto-refresh on workout finish)**; S7 settings/opt-out next |
@@ -106,7 +106,7 @@ This plan maps the PRD scope to phased, checkbox-trackable work. Phases follow t
 
 # Phase 1 — v0.1 Internal Alpha (PRD roadmap: Wk 1–6)
 
-**Goal:** make the app **truly offline-first**. Replace the in-memory prototype state with a minimal SQLite data layer, complete the full onboarding flow (all 21 screens), and seed the exercise catalog. Exit this phase with a single-user, persistent, fully navigable app that survives app kills and airplane mode.
+**Goal:** make the app **truly offline-first**. Replace the in-memory prototype state with a minimal SQLite data layer, complete the full onboarding flow, and seed the exercise catalog. Exit this phase with a single-user, persistent, fully navigable app that survives app kills and airplane mode.
 
 **PRD references:** §6.1 (scope), §11.0–11.8 (architecture + DDL + layout), §8 (onboarding spec).
 
@@ -218,21 +218,20 @@ Revisit if ergonomics get annoying in Phase 2.
 - [ ] Pre-migration backup to `gym_levels.db.pre-migration`; auto-rollback on throw (PRD §17) — land on first real schema bump (v2)
 - [ ] Unit tests: migration round-trip from every prior schema version in `test/db/` — land with v2 migration
 
-## 1.5 Complete the onboarding flow (21 screens per PRD §8)
+## 1.5 Complete the onboarding flow (per PRD §8)
 
-**State (2026-04-20):** All 21 screens built + 2 shared widgets (`BigSlider`, `OnboardingRadioTile`). Flow is reachable end-to-end from `/` → `/home`. Screens hold local state only; SQLite persistence lands with §1.6 screen rewire.
+**State (2026-05-01):** Onboarding has been trimmed and re-skinned per the v1-improvements design. The two pre-quiz hype slides + the standalone display-name screen were removed when the combined Auth screen (`/signup`) absorbed Hero Name + email + phone + password. Linear flow is now: `/signup` → `/verify-email` → `/age` → `/height` → `/calibrating/1` → … → `/paywall` → `/home`. Question screens still on disk: ~16 (age, height, body-type, priority-muscles, reward-style, tenure, equipment, limitations, training-styles, weight, weight-direction, target-weight, body-fat, training-days, session-minutes, notification-prefs) + 6 calibrating + 2 outro. Some are skipped from the linear chain but kept as deep-linkable edit surfaces (§1.5k).
 
 Shared additions:
 - [x] [lib/widgets/big_slider.dart](lib/widgets/big_slider.dart) — big mono readout + themed Material `Slider` (for age / height / weight / body fat / target weight).
 - [x] [lib/widgets/onboarding_radio_tile.dart](lib/widgets/onboarding_radio_tile.dart) — reusable themed radio row used across tenure / reward style / weight direction / session minutes.
 - [x] Retired the placeholder `attributes_screen.dart` / `objectives_screen.dart` / `experience_screen.dart`; those features are now split across purpose-built screens matching the PRD numbering.
 
-### 1.5a Intro hype slides (pre-quiz)
-- [x] Slide 1 — Muscle Ranks hype — [lib/screens/ranks_hype_screen.dart](lib/screens/ranks_hype_screen.dart) (route `/hype/ranks`)
-- [x] Slide 2 — Progression System hype — [lib/screens/progression_hype_screen.dart](lib/screens/progression_hype_screen.dart) (route `/hype/progression`)
+### 1.5a Intro hype slides (pre-quiz) — REMOVED
+- Both `ranks_hype_screen.dart` and `progression_hype_screen.dart` were deleted when the combined Auth screen replaced the original Welcome → 2 hype slides → 3 reg screens chain (2026-04-30, v1-improvements design pass).
 
 ### 1.5b Section 1 — Player Registration (teal, 0–10%)
-- [x] Screen 3 — Display name text input — [lib/screens/registration_screen.dart](lib/screens/registration_screen.dart)
+- [x] Hero Name + email + phone + password — collected on the combined Auth screen ([lib/screens/auth/auth_screen.dart](lib/screens/auth/auth_screen.dart)). The standalone `registration_screen.dart` is deleted.
 - [x] Screen 4 — Age slider 16–80 — [lib/screens/age_screen.dart](lib/screens/age_screen.dart)
 - [x] Screen 5 — Height slider + CM / FT-IN toggle — [lib/screens/height_screen.dart](lib/screens/height_screen.dart)
 
@@ -251,7 +250,7 @@ Shared additions:
 - [x] Screen 13 — Weight slider + KG / LBS — [lib/screens/weight_screen.dart](lib/screens/weight_screen.dart)
 - [x] Screen 14 — Weight direction radio (Gain / Lose / Maintain) — [lib/screens/weight_direction_screen.dart](lib/screens/weight_direction_screen.dart)
 - [x] Screen 15 — Target weight with ≥2 kg delta validation — [lib/screens/target_weight_screen.dart](lib/screens/target_weight_screen.dart); router skips it when direction = Maintain
-- [x] Screen 16 — Body-fat estimate slider — [lib/screens/body_fat_screen.dart](lib/screens/body_fat_screen.dart). Morphing avatar rendered as themed `PlaceholderBlock` for MVP; commissioned avatars deferred to the Phase 3 art pass.
+- [x] Screen 16 — Body-fat estimate slider — [lib/screens/body_fat_screen.dart](lib/screens/body_fat_screen.dart). Static `assets/body-front.png` inside corner brackets for v1.x.0; the design's `MorphBody` widget (per-body-type / per-body-fat morph) is C1/C2 in the v1-improvements design pass and not yet ported.
 
 ### 1.5f Section 5 — Daily Operations (green, 65–70%)
 - [x] Screen 17 — Training days presets + 7 toggles (≥2 required) — [lib/screens/training_days_screen.dart](lib/screens/training_days_screen.dart)
@@ -268,10 +267,10 @@ Shared additions:
 - [x] Each screen's CONTINUE persists its block to SQLite (writes land before nav) — every onboarding screen now calls `*Service.patch(...)` on CONTINUE before navigation. Services return before `context.go`.
 - [x] Per-screen resume: each onboarding screen seeds its initial value from the relevant service (`PlayerService.getPlayer`, `GoalsService.get`, `ExperienceService.get`, `ScheduleService.get`, `NotificationPrefsService.get`). Re-entering a screen shows the previously saved choice.
 - [x] `onboarding_completed` event fires on first Home render — [home_screen.dart](lib/screens/home_screen.dart) `initState` → `PlayerService.completeOnboarding()` + `AnalyticsService.log('onboarding_completed', {...})` when `player.onboardedAt` is null. Idempotent; only runs once.
-- [x] Route-level resume: if `player.onboardedAt != null` on cold launch, go_router's `redirect` sends `/` → `/home` so returning users skip the whole 21-screen flow. Backed by [lib/state/onboarding_flag.dart](lib/state/onboarding_flag.dart) — a `ValueNotifier<bool>` seeded from `PlayerService.getPlayer()` in [main.dart](lib/main.dart) and flipped to `true` by Home's first-render completion trigger.
+- [x] Route-level resume: if `player.onboardedAt != null` on cold launch, go_router's `redirect` sends `/` → `/home` so returning users skip the entire onboarding flow. Backed by [lib/state/onboarding_flag.dart](lib/state/onboarding_flag.dart) — a `ValueNotifier<bool>` seeded from `PlayerService.getPlayer()` in [main.dart](lib/main.dart) and flipped to `true` by Home's first-render completion trigger.
 
 ### 1.5j Router wiring
-- [x] Full flow in [lib/router.dart](lib/router.dart): `/` → 2 hype slides → 3 registration screens → `/calibrating/1` → 3 objectives screens → `/calibrating/2` → 4 experience screens → `/calibrating/3` → 4 attributes screens (target-weight conditionally skipped) → `/calibrating/4` → 2 operations screens → `/calibrating/5` → 1 settings screen → `/calibrating/6` → 2 outro screens → `/loader-pre-home` → `/home`.
+- [x] Full flow in [lib/router.dart](lib/router.dart): `/` → `/signup` (combined Auth, collects Hero Name + email + phone + password) → `/verify-email` → `/age` → `/height` → `/calibrating/1` → objectives screens → `/calibrating/2` → experience screens → `/calibrating/3` → attributes screens (target-weight conditionally skipped) → `/calibrating/4` → operations screens → `/calibrating/5` → settings screen → `/calibrating/6` → outro screens (`/challenge-system` → `/paywall`) → `/loader-pre-home` → `/home`. The 2 pre-quiz hype slides + standalone display-name screen were removed in the v1-improvements pass.
 
 ### 1.5k Post-onboarding editing (landed 2026-04-24)
 
@@ -286,7 +285,7 @@ Shared additions:
 - [x] `PlayerState` refactored to a thin cache over `PlayerService`: [lib/state/player_state.dart](lib/state/player_state.dart). Loads from `PlayerService.getPlayer()` at app start (via `..refresh()` in main.dart), exposes `player`, `isOnboarded`, `playerName`, and a `refresh()` method that screens call after every write.
 - [x] `copyWith` added to `Goal`, `ExperienceRow`, `ScheduleRow`, `NotificationPrefs` so services can offer patch semantics without replaying whole rows.
 - [x] `patch(…)` helper added to `PlayerService`, `GoalsService`, `ExperienceService`, `ScheduleService` — fetch existing row, overlay non-null args, upsert.
-- [x] All 21 onboarding screens wired: each reads existing value on mount, each persists on CONTINUE before navigating.
+- [x] Every onboarding screen wired: each reads existing value on mount, each persists on CONTINUE before navigating.
 - [x] Post-onboarding screens fully wired to real data as of 2026-04-24. Home's level / XP bar / streak / Total Workouts all read persisted state through `PlayerState.refresh()` (XpEngine.resolve + StreakService + WorkoutService). Profile shows real lifetime XP, real workout count, real longest streak, and real per-muscle ranks from `MuscleRankService` with tier progress via `RankEngine.progressInTier`. Today's Workout surfaces the profile inputs that drove the plan (`_ProfileChipRow`). Quests still render from the daily-quest engine (§2.1c).
 
 ## 1.7 Backup / restore (v1.0 multi-device story)
@@ -330,7 +329,7 @@ Shared additions:
 - [x] Kill + relaunch preserves onboarding + workout data in SQLite — verified manually via §1.5i route-level resume + §1.9 workout persistence; formal `kill -9` instrumentation test still in §1.8
 - [—] `gym_levels.db` is unreadable with a vanilla SQLite viewer — **deferred per §1.2**; not a v1.0 blocker
 - [x] Exercise catalog seed loads on first launch (80 rows verified) — landed with §1.3, covered by [test/db/seed_test.dart](test/db/seed_test.dart)
-- [x] All Phase 0 screens read their data from SQLite via services — onboarding (all 21), Home (Total Workouts, level, XP bar, streak, Today's Protocol, active quests), Profile (stats + muscle ranks), Today's Workout (plan generator + profile chips) all live as of 2026-04-24. Streak screen calendar still renders placeholder days; that's a drill-down polish, not a data-layer gap.
+- [x] All Phase 0 screens read their data from SQLite via services — onboarding, Home (Total Workouts, level, XP bar, streak, Today's Protocol, active quests), Profile (stats + muscle ranks), Today's Workout (plan generator + profile chips), Streak screen calendar (real workouts + scheduled days, completed/missed/rest/today states) all live as of 2026-05-01.
 - [~] CI runs `flutter analyze` + `flutter test` — all pass locally on every change; GitHub Actions workflow not yet set up
 - [ ] Migration round-trip tests pass for every schema version shipped so far — lands with first v2 schema bump per §1.4
 
@@ -531,7 +530,7 @@ Phase 0 has the UI; now wire the triggers.
 ## 3.4 Settings screens
 PRD §9.6.
 - [ ] `/profile/settings` hub
-- [ ] Edit onboarding answers (opens the same 21 screens in `edit` mode, writes diff to SQLite)
+- [ ] Edit onboarding answers (opens the same screens in `edit` mode, writes diff to SQLite)
 - [ ] Units toggle (metric/imperial) — live-flips all readouts
 - [ ] Notification prefs toggles (3)
 - [ ] Subscription management (current plan, renewal date, Manage → store sheet)
@@ -590,7 +589,7 @@ PRD design-system §10.
 ## 3.12 Acceptance criteria (full PRD §19 pass) — BLOCKING for launch
 
 ### 3.12a Rendering & flows
-- [ ] All 21 onboarding + 7 post-registration screens render on iPhone SE → Pro Max + Android 360dp → 480dp with no clipping
+- [ ] All onboarding + post-registration screens render on iPhone SE → Pro Max + Android 360dp → 480dp with no clipping
 - [ ] Paywall reachable from all 4 triggers in §13
 - [ ] Push notifications fire at correct local times across DST
 
@@ -645,10 +644,10 @@ The friends + leaderboard + full-history-sync feature set has its own scoped pla
 - **Sync surface: Scope B — full cloud sync of every domain table.** Workouts, sets, weight logs, quest progress, muscle ranks, streak data, onboarding answers, player class, public profile, friends — **everything mirrors to Supabase**. Local sqflite remains the read path (offline-first preserved); writes commit locally first, then enqueue cloud pushes via an outbox queue. Device switch restores 100% of state including full workout history.
 - Identity strategy: `cloud_id UUID` added to each synced local table; local int PKs untouched (no mass migration).
 - Conflict resolution: append-only tables are immutable post-write; mutable singletons (profile, goals, schedule, etc.) use last-write-wins via `updated_at`.
-- Leaderboard: 3 friend-only tabs (Weekly XP / Current Streak / All-time XP) with realtime "your friend just passed you" toasts.
+- Leaderboard: 3 friend-only tabs (This Week / Month / All Time) with realtime "your friend just passed you" toasts. Streak data still surfaces inline as a per-row chip on every entry.
 - Privacy: strict opt-in, granular `disconnect_socials` (purges friends, keeps cloud history) vs `delete_account` (purges everything). Server-side anti-cheat triggers (per-set volume cap, weekly-xp delta cap, streak-increment cap, total-xp monotonicity). Postgres RLS enforces per-user access on every cloud table.
 - Effort: **~36-44 dev days + 1-2 weeks App Store review buffer = ~8-10 weeks calendar**.
-- Status: **implementation in progress.** S0–S5 done; S6 leaderboard core shipped 2026-04-30 — `LeaderboardStatsService` keeps `public_profiles` in lockstep with local XP/streak state, `LeaderboardService` fetches friend+self rows ordered by metric, three-tab `LeaderboardScreen` at `/leaderboard` plus a 5th "Ranks" bottom-nav tab. Realtime subscriptions / offline snapshots / opt-in tab visibility deferred to S6b alongside S7 settings. Next: S7 settings + disconnect-socials + delete-account + pause-sync. Invite-link deep-linking deferred alongside the rest of the native URL-scheme registration. See [socials_plan.md](socials_plan.md) for the full breakdown.
+- Status: **implementation in progress.** S0–S5 done; S6 leaderboard core shipped 2026-04-30 + Hall of Glory rebuild + `monthly_xp` migration (011) added 2026-05-01 — `LeaderboardStatsService` keeps `public_profiles` in lockstep with local XP/streak/monthly state, `LeaderboardService` fetches friend+self rows ordered by metric, three-tab `LeaderboardScreen` at `/leaderboard` (This Week / Month / All Time, all real data) reachable via the floating gold center button on the bottom tab bar (the leaderboard IS one of the 5 tabs, not a 5th additional tab). Realtime subscriptions / offline snapshots / opt-in tab visibility deferred to S6b alongside S7 settings. Next: S7 settings + disconnect-socials + delete-account + pause-sync. Invite-link deep-linking deferred alongside the rest of the native URL-scheme registration. See [socials_plan.md](socials_plan.md) for the full breakdown.
 
 ### 4.1b Other v1.1 integrations
 - [—] Apple Health / Google Fit import (steps, body weight, heart rate)
@@ -704,7 +703,7 @@ Phase 0 (done) ✓
     ↓
 Phase 1.1 (sqflite + services)   ✓ done
 Phase 1.3 (80-exercise seed)     ✓ done
-Phase 1.5 (21 onboarding screens + persistence) ✓ done
+Phase 1.5 (onboarding screens + persistence) ✓ done
 Phase 1.6 (PlayerState over services)           ✓ done
 Phase 1.9 (demo tracker: picker + logger + history + detail) ✓ done
     ↓

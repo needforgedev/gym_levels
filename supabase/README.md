@@ -12,14 +12,18 @@ restore and friend leaderboards.
 ```
 supabase/
   migrations/
-    001_extensions.sql     -- citext, pgcrypto, uuid-ossp
-    002_schema.sql         -- the ~13 cloud-mirrored tables + friendships + reports
-    003_rls.sql            -- Row-Level Security policies
-    004_rpcs.sql           -- find_users_by_phone_hashes / delete_my_account / disconnect_socials
-    005_triggers.sql       -- anti-cheat caps + updated_at auto-bump
-    006_seed.sql           -- reserved-usernames blocklist
-    007_cron.sql           -- nightly purge of soft-deleted rows older than 30 days
-  README.md                -- this file
+    001_extensions.sql           -- citext, pgcrypto, uuid-ossp
+    002_schema.sql               -- the ~13 cloud-mirrored tables + friendships + reports
+    003_rls.sql                  -- Row-Level Security policies
+    004_rpcs.sql                 -- find_users_by_phone_hashes / delete_my_account / disconnect_socials
+    005_triggers.sql             -- anti-cheat caps + updated_at auto-bump
+    006_seed.sql                 -- reserved-usernames blocklist
+    007_cron.sql                 -- nightly purge of soft-deleted rows + Monday weekly_xp rollover
+    008_phone_column_fix.sql     -- swaps placeholder phone_encrypted BYTEA for plain phone TEXT
+    009_friend_graph_rpc.sql     -- list_my_friend_graph RPC for FriendsScreen
+    010_username_check_public.sql -- grants check_username_available to anon (pre-auth lookup)
+    011_monthly_xp.sql           -- adds monthly_xp column + delta-cap trigger + 1st-of-month cron
+  README.md                      -- this file
 ```
 
 ## What you (the human) need to do once
@@ -41,7 +45,7 @@ Easiest path (no Supabase CLI install required):
 
 - In the Supabase dashboard → **SQL Editor** → New query.
 - Open `migrations/001_extensions.sql`, paste, click `Run`.
-- Repeat for `002_schema.sql`, `003_rls.sql`, `004_rpcs.sql`, `005_triggers.sql`, `006_seed.sql`, `007_cron.sql` — strictly in numerical order.
+- Repeat for every migration file in numerical order — `002_schema.sql` through `011_monthly_xp.sql`. Strictly in order.
 - After each, check the Table Editor / Database → Functions / Database → Triggers to confirm objects appeared.
 
 Faster path (Supabase CLI):
@@ -109,7 +113,7 @@ even if its anon key is leaked):
 - **RLS on every user-data table.** A user can read/write their own rows only. `public_profiles` has a special exception: friends with `accepted` status can read each other's profile rows.
 - **Phone hashed with a server-side salt** stored in Vault. App never sees the salt.
 - **Phone column encrypted at rest** with `pgcrypto`. DB dump leak doesn't expose raw numbers.
-- **Per-row anti-cheat caps:** `weight_kg × reps ≤ 5000` per set, `xp_earned ≤ 1500` per workout, `weekly_xp` delta ≤ 1500 per push, `current_streak` increment ≤ 1 per local day, `total_xp` monotonically increasing.
+- **Per-row anti-cheat caps:** `weight_kg × reps ≤ 5000` per set, `xp_earned ≤ 1500` per workout, `weekly_xp` delta ≤ 1500 per push, `monthly_xp` delta ≤ 6000 per push, `current_streak` increment ≤ 1 per local day, `total_xp` monotonically increasing.
 - **Rate-limits on hot RPCs:** contact-match 5/hour/user, friend-request 50/day/user, username search 30/min/user.
 - **Idempotent UPSERT** on every push (keyed by `cloud_id` UUID), so re-pushes don't duplicate.
 - **Soft-delete + 30-day cron purge** so rows can be undeleted within a window.

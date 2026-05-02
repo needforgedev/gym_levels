@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../data/services/goals_service.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 2 Screen 8 — reward style radio. Tunes notification copy.
 class RewardStyleScreen extends StatefulWidget {

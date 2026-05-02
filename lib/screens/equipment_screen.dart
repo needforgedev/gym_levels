@@ -6,7 +6,6 @@ import '../data/services/experience_service.dart';
 import '../state/player_state.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 3 Screen 10 — equipment multi-select (≥1 required).
 class EquipmentScreen extends StatefulWidget {

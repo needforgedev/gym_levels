@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../data/models/streak.dart';
+import '../data/services/auth_service.dart';
 import '../data/services/player_service.dart';
 import '../data/services/streak_service.dart';
 import '../data/services/workout_service.dart';
@@ -19,7 +20,7 @@ import '../widgets/tab_bar.dart';
 ///
 /// Layout (top → bottom):
 ///   • Centered "Profile" small title.
-///   • Header card: hero avatar + name + email + edit icon, LV/XP pill row,
+///   • Header card: hero avatar + name + email, LV/XP pill row,
 ///     amber "Progress to Level N" bar with start/target XP labels, "PRO
 ///     MEMBER" amber pill (only when subscription says so).
 ///   • Player Class card — amber-bordered with dumbbell icon, MASS BUILDER
@@ -201,23 +202,15 @@ class _HeaderCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
-                      'local profile',
-                      style: TextStyle(
+                    Text(
+                      AuthService.currentEmail ?? 'local profile',
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppPalette.textMuted,
                       ),
                     ),
                   ],
                 ),
-              ),
-              _SmallIconButton(
-                icon: Icons.edit_outlined,
-                // Profile-edit modal lands in Chunk C. Until then,
-                // the pencil is a no-op (the single Hero Name was
-                // claimed in Join Now and is rate-limited 30 days
-                // server-side, so there's nothing to edit here yet).
-                onTap: () {},
               ),
             ],
           ),
@@ -795,35 +788,6 @@ class _PillChip extends StatelessWidget {
         ),
       ),
       child: child,
-    );
-  }
-}
-
-class _SmallIconButton extends StatelessWidget {
-  const _SmallIconButton({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: AppPalette.purple.withValues(alpha: 0.12),
-            border: Border.all(
-              color: AppPalette.purple.withValues(alpha: 0.25),
-              width: 1,
-            ),
-          ),
-          child: Icon(icon, size: 16, color: AppPalette.purpleSoft),
-        ),
-      ),
     );
   }
 }

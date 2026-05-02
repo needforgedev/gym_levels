@@ -7,7 +7,6 @@ import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 4 Screen 13 — current body weight slider 30–250 + KG/LBS.
 class WeightScreen extends StatefulWidget {

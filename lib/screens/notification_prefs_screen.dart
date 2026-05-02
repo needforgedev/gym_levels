@@ -5,7 +5,6 @@ import '../data/models/notification_prefs.dart';
 import '../data/services/notification_prefs_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 6 Screen 19 — notification toggles (3).
 /// All default ON. Triggers OS permission prompt on CONTINUE (wired in

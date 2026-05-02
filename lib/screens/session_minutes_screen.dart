@@ -6,7 +6,6 @@ import '../data/services/schedule_service.dart';
 import '../state/player_state.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 5 Screen 18 — session length radio.
 class SessionMinutesScreen extends StatefulWidget {

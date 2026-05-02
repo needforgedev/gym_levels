@@ -7,7 +7,6 @@ import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/big_slider.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 4 Screen 15 — target weight. Skipped if Maintain.
 /// Validation: must differ from the current weight by ≥2kg in the chosen

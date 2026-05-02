@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../data/services/experience_service.dart';
 import '../widgets/onboarding_radio_tile.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 3 Screen 12 — training styles multi-select.
 class TrainingStylesScreen extends StatefulWidget {

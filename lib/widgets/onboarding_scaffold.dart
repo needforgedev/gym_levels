@@ -1,8 +1,32 @@
 import 'package:flutter/material.dart';
 
 import '../theme/tokens.dart';
-import 'progress_header.dart';
 import 'screen_base.dart';
+
+enum OnboardingSection {
+  registration,
+  objectives,
+  experience,
+  attributes,
+  operations,
+  settings,
+}
+
+Color sectionAccent(OnboardingSection s) {
+  switch (s) {
+    case OnboardingSection.registration:
+    case OnboardingSection.attributes:
+      return AppPalette.teal;
+    case OnboardingSection.objectives:
+      return AppPalette.purple;
+    case OnboardingSection.experience:
+      return AppPalette.yellow;
+    case OnboardingSection.operations:
+      return AppPalette.green;
+    case OnboardingSection.settings:
+      return AppPalette.white;
+  }
+}
 
 /// Onboarding shell — matches design v2 `OBShell`
 /// (`design/v2/onboarding-shell.jsx`).

@@ -6,7 +6,6 @@ import '../data/services/schedule_service.dart';
 import '../state/player_state.dart';
 import '../theme/tokens.dart';
 import '../widgets/onboarding_scaffold.dart';
-import '../widgets/progress_header.dart';
 
 /// PRD §8 Section 5 Screen 17 — training days.
 /// Presets (3 / 5 / every day) auto-tick the 7 day toggles.
