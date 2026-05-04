@@ -93,11 +93,17 @@ The `find_users_by_phone_hashes` RPC reads this from the Vault at runtime via `v
 Both go into a **`.env` file at the Flutter repo root** (gitignored, never committed):
 
 ```env
-SUPABASE_URL=https://abcdefgh.supabase.co
-SUPABASE_ANON_KEY=eyJ...long-jwt...
+PROJECT_URL=https://abcdefgh.supabase.co
+PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxx
+PHONE_HASH_SALT=<32-byte-hex-from-openssl-rand-hex-32>
 ```
 
-The Flutter app will load this via `flutter_dotenv` on cold launch (Phase S1 work).
+The Makefile (`make run`, `make build-apk`, etc.) reads `.env` and
+forwards each value to Flutter via `--dart-define` at compile time.
+**`.env` is NOT bundled as a Flutter asset** (P0-2 fix, 2026-05-02),
+so secrets cannot end up inside a release APK / IPA. CI builds skip
+`.env` entirely and pass `--dart-define` values directly from the
+secret store.
 
 ### 6. Service-role key — do NOT put in the app
 

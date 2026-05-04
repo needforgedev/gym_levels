@@ -13,7 +13,7 @@ Flutter mobile app (iOS + Android), offline-first sqflite, Supabase cloud sync.
 
 ## Run locally
 
-Prereqs: Flutter SDK ≥3.5, Xcode (iOS), Android Studio + SDK (Android).
+Prereqs: Flutter SDK ≥3.5, Xcode (iOS), Android Studio + SDK (Android), GNU Make.
 
 ```bash
 # 1. Clone + install deps
@@ -21,21 +21,45 @@ flutter pub get
 
 # 2. Add the Supabase credentials this app expects
 cp .env.example .env
-# Edit .env — paste your Supabase project URL + anon key.
-# (Provision a project + apply migrations per supabase/README.md.)
+# Edit .env — paste your Supabase project URL, publishable key, and
+# phone-hash salt. (Provision a project + apply migrations per
+# supabase/README.md.)
 
 # 3. Run
-flutter run             # picks the active simulator/device
-flutter run -d <id>     # specific device — list via `flutter devices`
+make run                                              # default simulator/device
+make run DEVICE=F0A7DCBB-1891-41E2-8F89-7EE9142C87D7  # specific device
 ```
 
-`.env` is gitignored. The app loads it via `flutter_dotenv` on cold launch.
+`make run` reads `.env` and translates each `KEY=VAL` line into a
+`--dart-define=KEY=VAL` flag passed to `flutter run`. The `.env` file
+is gitignored AND no longer bundled as a Flutter asset (P0-2), so
+credentials cannot leak into a release APK / IPA.
+
+If you don't have `.env` set up, `make run` still works — the app
+launches in offline-only mode (no socials, no leaderboard). All
+local-first features (workouts, XP, streak, ranks) work fine.
+
+Want to run with the production app icon + bundle ID? `make run-prod`
+uses the `prod` flavor (Android bundle ID `com.example.gym_levels`,
+label `Level Up IRL`) instead of the `dev` flavor (`.dev` suffix,
+label `Level Up Dev`) — both can install side-by-side.
 
 ## Build a release
 
 ```bash
-flutter build apk --release          # Android
-flutter build ipa --release          # iOS (requires Apple Dev account + signing)
+make build-apk        # Android — release APK, prod flavor
+make build-ipa        # iOS — release IPA, requires signing
+```
+
+These wrap `flutter build` with the `--flavor prod` and `--dart-define`
+flags from `.env`. In CI, skip the Makefile and pass `--dart-define`
+values directly from your secret store:
+
+```bash
+flutter build apk --release --flavor prod \
+  --dart-define=PROJECT_URL=$PROJECT_URL \
+  --dart-define=PUBLISHABLE_KEY=$PUBLISHABLE_KEY \
+  --dart-define=PHONE_HASH_SALT=$PHONE_HASH_SALT
 ```
 
 ## Project layout
@@ -71,8 +95,9 @@ test/          — unit + widget tests
 ## Tests + analysis
 
 ```bash
-flutter analyze       # lints (clean expected on every commit)
-flutter test          # all unit + widget tests
+make analyze          # flutter analyze (clean expected on every commit)
+make test             # all unit + widget tests (no .env required)
+make clean            # flutter clean + iOS Pods wipe
 ```
 
 ## Architectural rules of thumb

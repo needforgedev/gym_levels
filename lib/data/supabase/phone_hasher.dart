@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// SHA-256 hashing for phone numbers in the contact-match flow.
 ///
@@ -10,19 +9,27 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 /// flow through [PhoneHasher.hash]. The same salt must be used in
 /// both places, otherwise the hashes won't match across users.
 ///
-/// The salt comes from `PHONE_HASH_SALT` in `.env`. It must be the
-/// same value as the `PHONE_HASH_SALT` secret stored in Supabase
-/// Vault (admin reference; the server doesn't actually re-compute the
-/// hash — it just compares the string).
+/// **The salt is bundled with the client, not server-side.** It
+/// arrives via `--dart-define=PHONE_HASH_SALT=...` at build time, so
+/// it ships inside every installed app. A determined attacker who
+/// reverses the binary can rebuild rainbow tables — the salt's job
+/// is making a casual database leak less catastrophic, not defending
+/// against motivated adversaries. See `socials_plan.md` for the full
+/// privacy-model discussion. The same value must be stored as a
+/// reference in Supabase Vault so the contact-match RPC can verify
+/// hashes line up across deploys.
 class PhoneHasher {
   PhoneHasher._();
 
-  static String? get _salt => dotenv.env['PHONE_HASH_SALT'];
+  // Compile-time constant from --dart-define. Empty string when not
+  // provided.
+  static const String _salt = String.fromEnvironment('PHONE_HASH_SALT');
 
-  /// Whether the salt has been configured. False on a dev machine
-  /// without a `.env`. Callers should guard with this before relying
-  /// on contact-match behaviour.
-  static bool get isConfigured => (_salt ?? '').isNotEmpty;
+  /// Whether the salt has been configured. False when no
+  /// `--dart-define=PHONE_HASH_SALT=...` was passed at build time
+  /// (e.g. in tests or offline-only dev runs). Callers should guard
+  /// with this before relying on contact-match behaviour.
+  static bool get isConfigured => _salt.isNotEmpty;
 
   /// Hashes a phone number. Returns the hex-encoded SHA-256 of
   /// `(normalizedPhone || salt)`. Throws [StateError] if the salt
@@ -31,13 +38,13 @@ class PhoneHasher {
   /// `phone` should already be in E.164 format (`+919876543210`). Use
   /// [normalizeToE164] to coerce loosely-formatted input.
   static String hash(String phone) {
-    final salt = _salt;
-    if (salt == null || salt.isEmpty) {
+    if (_salt.isEmpty) {
       throw StateError(
-        'PHONE_HASH_SALT not set in .env — cannot hash phone numbers.',
+        'PHONE_HASH_SALT not configured — pass via --dart-define at '
+        'build time. Cannot hash phone numbers.',
       );
     }
-    final bytes = utf8.encode('$phone$salt');
+    final bytes = utf8.encode('$phone$_salt');
     return sha256.convert(bytes).toString();
   }
 

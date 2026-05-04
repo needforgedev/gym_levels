@@ -136,23 +136,24 @@ class _PrivacyExplainer extends StatelessWidget {
         children: [
           _PrivacyRow(
             icon: Icons.lock_outline,
-            title: 'Phone numbers stay on your device',
-            body: 'We hash each number with a server-side salt before '
-                'sending. Plain numbers never leave your phone.',
+            title: 'Plain numbers never leave your phone',
+            body: 'Each contact number is SHA-256 hashed on this device '
+                'before anything is sent. The server only sees hashes.',
           ),
           const SizedBox(height: 14),
           _PrivacyRow(
             icon: Icons.visibility_off_outlined,
             title: 'Names + emails stay private',
-            body: 'We only read phone numbers — never contact names, '
-                'photos, or email addresses.',
+            body: 'We only read phone numbers from your address book — '
+                'never names, photos, or email addresses.',
           ),
           const SizedBox(height: 14),
           _PrivacyRow(
-            icon: Icons.delete_outline,
-            title: 'Hashes are deleted after matching',
-            body: 'Server compares hashes once, returns matches, then '
-                'discards the upload. Nothing stored.',
+            icon: Icons.shield_moon_outlined,
+            title: 'You control whether your number is matchable',
+            body: 'We only match against people who have set their own '
+                'phone number on Level Up. Skip this step or remove your '
+                'phone in Settings to opt out.',
           ),
         ],
       ),

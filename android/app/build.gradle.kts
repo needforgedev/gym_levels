@@ -20,14 +20,37 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Base application ID. Each flavor below adds a suffix so dev
+        // and prod builds install side-by-side on the same device.
         applicationId = "com.example.gym_levels"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // ─── Flavors ─────────────────────────────────────────────────
+    // Two environments separated by suffix so they coexist on the
+    // same device:
+    //
+    //   dev   → com.example.gym_levels.dev   | "Level Up Dev"
+    //   prod  → com.example.gym_levels        | "Level Up IRL"
+    //
+    // The `--dart-define` values (PROJECT_URL etc., wired through the
+    // Makefile) drive which Supabase project each flavor talks to.
+    // Flavors only control the Android-side bundle ID + app label.
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "Level Up Dev")
+        }
+        create("prod") {
+            dimension = "env"
+            resValue("string", "app_name", "Level Up IRL")
+        }
     }
 
     buildTypes {

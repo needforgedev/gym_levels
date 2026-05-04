@@ -1,58 +1,65 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Initializes the Supabase client and exposes the singleton.
 ///
-/// Wired from [main.dart] before `runApp` so every screen can `await
-/// SupabaseConfig.client.from('public_profiles').select(...)` without
-/// re-initializing.
+/// **Config delivery (P0-2):** values arrive via `--dart-define` at
+/// build time, embedded as `String.fromEnvironment` constants. Nothing
+/// is read from disk at runtime, and nothing is bundled as a separate
+/// asset — so a release APK / IPA cannot leak credentials via an
+/// extracted `.env` file.
 ///
-/// `.env` at the repo root holds:
+/// Build commands look like:
 ///
-/// ```env
-/// PROJECT_URL=https://<ref>.supabase.co
-/// PUBLISHABLE_KEY=sb_publishable_...
+/// ```bash
+/// # Local dev — use the Makefile so .env values get translated into
+/// # --dart-define flags automatically.
+/// make run                          # equivalent: flutter run --dart-define=PROJECT_URL=... --dart-define=PUBLISHABLE_KEY=... --dart-define=PHONE_HASH_SALT=...
+///
+/// # Production build (CI provides the values from a secret store).
+/// flutter build apk --release \
+///   --dart-define=PROJECT_URL=https://<ref>.supabase.co \
+///   --dart-define=PUBLISHABLE_KEY=sb_publishable_... \
+///   --dart-define=PHONE_HASH_SALT=<32-byte-hex>
 /// ```
 ///
-/// `.env` is gitignored. The publishable key is safe to ship in the
-/// client app — it's RLS-clamped on the database side. The
-/// `service_role` key (which bypasses RLS) is *not* in `.env` and
-/// never goes into the Flutter bundle.
+/// The publishable key is safe to ship — it's RLS-clamped on the
+/// database side. The `service_role` key (which bypasses RLS) is
+/// never put into either dart-defines or `.env`.
 class SupabaseConfig {
   SupabaseConfig._();
 
-  /// Whether the app has valid Supabase credentials. False on a fresh
-  /// dev machine that hasn't copied `.env.example` to `.env` yet — in
-  /// that case we degrade gracefully (no socials, no leaderboard) and
-  /// keep the rest of the app fully functional.
-  static bool get isConfigured =>
-      _projectUrl.isNotEmpty && _publishableKey.isNotEmpty;
+  // Compile-time constants from --dart-define. Empty string when not
+  // provided; in that case the app runs in offline-only mode and
+  // every Supabase-dependent feature is gated by [isConfigured].
+  static const String _projectUrl = String.fromEnvironment('PROJECT_URL');
+  static const String _publishableKey =
+      String.fromEnvironment('PUBLISHABLE_KEY');
 
-  static String get _projectUrl => dotenv.env['PROJECT_URL'] ?? '';
-  static String get _publishableKey => dotenv.env['PUBLISHABLE_KEY'] ?? '';
+  static bool _initialized = false;
 
-  /// Loads `.env` and initializes Supabase. Call once before `runApp`.
+  /// Whether the app has valid Supabase credentials. False when
+  /// `--dart-define` values weren't passed at build time, and false
+  /// in any test that doesn't call [initialize] — in those cases we
+  /// degrade gracefully (no socials, no leaderboard) and the rest
+  /// of the app keeps working.
   ///
-  /// Safe to call when `.env` is missing — logs a warning and returns
-  /// without throwing. Callers should check [isConfigured] before any
-  /// Supabase API call.
-  static Future<void> initialize() async {
-    try {
-      await dotenv.load(fileName: '.env');
-    } catch (_) {
-      // .env not present — dev machine without credentials, or first-
-      // time setup. Skip Supabase init; socials features will be
-      // gated by `isConfigured`.
-      return;
-    }
+  /// Pure getter — no I/O, no env-file reads, safe to call from any
+  /// thread or test context.
+  static bool get isConfigured =>
+      _initialized && _projectUrl.isNotEmpty && _publishableKey.isNotEmpty;
 
-    if (!isConfigured) return;
+  /// Initializes Supabase if credentials are present. Call once
+  /// before `runApp`. Safe to call when nothing is configured — the
+  /// app simply runs in offline-only mode.
+  static Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    if (_projectUrl.isEmpty || _publishableKey.isEmpty) return;
 
     await Supabase.initialize(
       url: _projectUrl,
       anonKey: _publishableKey,
-      // Auth state persists across app launches via secure storage.
-      // The Supabase Flutter SDK handles token refresh transparently.
       authOptions: const FlutterAuthClientOptions(
         autoRefreshToken: true,
       ),

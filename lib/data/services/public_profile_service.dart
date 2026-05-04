@@ -56,26 +56,30 @@ class PublicProfileService {
     }
   }
 
-  /// Upserts the public_profiles row for the authenticated user.
+  /// Upserts the authenticated user's profile rows.
   ///
-  /// Internally branches on whether the row already exists:
+  /// Writes split across two tables (P0-3, migration 012):
+  ///   - `public_profiles` — username + display_name (friend-readable)
+  ///   - `private_profiles` — phone + phone_hash (owner-readable only)
+  ///
+  /// Internally branches on whether each row already exists:
   ///   - **Exists:** `UPDATE` only the supplied columns. Untouched
-  ///     columns (e.g. existing username when called from /phone)
-  ///     are preserved.
-  ///   - **Doesn't exist:** `INSERT` — but `username` and
-  ///     `display_name` are required (the table enforces NOT NULL).
-  ///     If the caller didn't supply them, returns an error so the
-  ///     UI can route the user back through Pick-Username first.
+  ///     columns are preserved.
+  ///   - **Doesn't exist (public_profiles):** `INSERT` — but
+  ///     `username` and `display_name` are required (NOT NULL on the
+  ///     table). If the caller didn't supply them, returns an error
+  ///     so the UI can route the user through Pick-Username first.
+  ///   - **Doesn't exist (private_profiles):** `INSERT` with whatever
+  ///     phone fields were supplied; both columns are nullable.
   ///
-  /// We deliberately avoid PostgREST's `.upsert()` here — its default
+  /// We deliberately avoid PostgREST's `.upsert()` — its default
   /// behaviour treats missing payload columns as `NULL` during the
-  /// UPDATE half, which clobbers username/display_name when called
-  /// from /phone with only `{phone, phone_hash}`. The explicit
+  /// UPDATE half, which clobbers untouched fields. The explicit
   /// SELECT-then-UPDATE-or-INSERT pattern is clearer and safer.
   ///
   /// Phone, when provided, must already be in E.164 format. The
-  /// matching `phone_hash` is computed via [PhoneHasher] before being
-  /// pushed.
+  /// matching `phone_hash` is computed via [PhoneHasher] before
+  /// being pushed.
   static Future<({bool ok, String? errorMessage})> upsertProfile({
     String? username,
     String? displayName,
@@ -86,45 +90,70 @@ class PublicProfileService {
     }
     final userId = AuthService.currentUserId!;
 
-    final fields = <String, dynamic>{};
-    if (username != null) fields['username'] = username.toLowerCase();
-    if (displayName != null) fields['display_name'] = displayName;
+    // Split incoming fields by destination table.
+    final publicFields = <String, dynamic>{};
+    if (username != null) publicFields['username'] = username.toLowerCase();
+    if (displayName != null) publicFields['display_name'] = displayName;
+
+    final privateFields = <String, dynamic>{};
     if (phoneE164 != null) {
-      fields['phone'] = phoneE164;
+      privateFields['phone'] = phoneE164;
       if (PhoneHasher.isConfigured) {
-        fields['phone_hash'] = PhoneHasher.hash(phoneE164);
+        privateFields['phone_hash'] = PhoneHasher.hash(phoneE164);
       }
     }
 
-    if (fields.isEmpty) return (ok: true, errorMessage: null);
+    if (publicFields.isEmpty && privateFields.isEmpty) {
+      return (ok: true, errorMessage: null);
+    }
 
     try {
-      // Does the row exist already? Single round-trip to find out.
-      final existing = await _client
-          .from('public_profiles')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (existing != null) {
-        // UPDATE: only the provided columns; everything else preserved.
-        await _client
+      if (publicFields.isNotEmpty) {
+        final existing = await _client
             .from('public_profiles')
-            .update(fields)
-            .eq('user_id', userId);
-      } else {
-        // INSERT: requires username + display_name (NOT NULL columns).
-        if (fields['username'] == null || fields['display_name'] == null) {
-          return (
-            ok: false,
-            errorMessage:
-                'Pick a username first — your profile row hasn\'t been '
-                'created yet.',
-          );
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existing != null) {
+          await _client
+              .from('public_profiles')
+              .update(publicFields)
+              .eq('user_id', userId);
+        } else {
+          // INSERT: username + display_name are NOT NULL.
+          if (publicFields['username'] == null ||
+              publicFields['display_name'] == null) {
+            return (
+              ok: false,
+              errorMessage:
+                  'Pick a username first — your profile row hasn\'t '
+                  'been created yet.',
+            );
+          }
+          publicFields['user_id'] = userId;
+          await _client.from('public_profiles').insert(publicFields);
         }
-        fields['user_id'] = userId;
-        await _client.from('public_profiles').insert(fields);
       }
+
+      if (privateFields.isNotEmpty) {
+        final existingPriv = await _client
+            .from('private_profiles')
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existingPriv != null) {
+          await _client
+              .from('private_profiles')
+              .update(privateFields)
+              .eq('user_id', userId);
+        } else {
+          privateFields['user_id'] = userId;
+          await _client.from('private_profiles').insert(privateFields);
+        }
+      }
+
       return (ok: true, errorMessage: null);
     } on PostgrestException catch (e) {
       // 23505 = unique_violation. The TOCTOU window between the RPC
@@ -146,8 +175,9 @@ class PublicProfileService {
   }
 
   /// Fetches the authenticated user's `public_profiles` row, or null
-  /// if it hasn't been created yet (i.e. the user signed up but
-  /// hasn't completed the username + phone collection step).
+  /// if it hasn't been created yet. Note: this no longer contains
+  /// `phone` / `phone_hash` (those moved to `private_profiles` in
+  /// migration 012). Use [getMyPhone] when you need the raw phone.
   static Future<Map<String, dynamic>?> getMyProfile() async {
     if (!AuthService.isAuthenticated) return null;
     final userId = AuthService.currentUserId!;
@@ -158,6 +188,29 @@ class PublicProfileService {
           .eq('user_id', userId)
           .maybeSingle();
       return row;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetches the authenticated user's own raw phone number (E.164).
+  /// Returns null if not signed in, no row exists, or phone wasn't
+  /// set during onboarding.
+  ///
+  /// Reads from `private_profiles` — RLS only allows the row owner
+  /// to read their own row, so this is the only sanctioned path to
+  /// the raw value. Used by [ContactMatchService] to derive the
+  /// user's country dial code at scan time.
+  static Future<String?> getMyPhone() async {
+    if (!AuthService.isAuthenticated) return null;
+    final userId = AuthService.currentUserId!;
+    try {
+      final row = await _client
+          .from('private_profiles')
+          .select('phone')
+          .eq('user_id', userId)
+          .maybeSingle();
+      return row?['phone'] as String?;
     } catch (_) {
       return null;
     }

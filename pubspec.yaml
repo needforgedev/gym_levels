@@ -1,5 +1,5 @@
 name: gym_levels
-description: "A new Flutter project."
+description: "Level Up IRL — gamified fitness app. Train IRL, earn XP, level up, climb friend leaderboards."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -42,12 +42,12 @@ dependencies:
   path_provider: ^2.1.5
 
   # Socials & Scope B sync (v1.1) — see socials_plan.md.
-  # supabase_flutter wraps Postgres + Auth + Realtime; flutter_dotenv
-  # loads PROJECT_URL + PUBLISHABLE_KEY + PHONE_HASH_SALT from a
-  # gitignored .env file at the repo root. crypto is used by
-  # PhoneHasher to SHA-256 the salted phone numbers before push.
+  # supabase_flutter wraps Postgres + Auth + Realtime. PROJECT_URL +
+  # PUBLISHABLE_KEY + PHONE_HASH_SALT arrive via --dart-define at
+  # build time (see Makefile + lib/data/supabase/supabase_client.dart);
+  # nothing is bundled as an asset. crypto is used by PhoneHasher to
+  # SHA-256 the salted phone numbers before push.
   supabase_flutter: ^2.5.0
-  flutter_dotenv: ^5.1.0
   crypto: ^3.0.6
   # UUIDv4 generator for the `cloud_id` columns added in v2 of the
   # local schema (see lib/data/schema.dart). Used by SyncEngine when
@@ -88,9 +88,12 @@ flutter:
   uses-material-design: true
 
   assets:
-    # Supabase config (gitignored; ships in the bundle but only loaded at
-    # runtime by flutter_dotenv on the device that has the file).
-    - .env
+    # Note: `.env` is intentionally NOT listed here. Production config
+    # arrives via `--dart-define` at build time (see SupabaseConfig).
+    # `.env` is only used as a dev fallback by `flutter run` on local
+    # machines, where flutter_dotenv reads it from the working directory
+    # at runtime — no asset bundling required, and no risk of secrets
+    # leaking into a release APK / IPA.
     - assets/hero-character.png
     - assets/hero-bust.png
     - assets/founder-badge.png

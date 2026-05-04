@@ -93,9 +93,12 @@ class ContactMatchService {
     // user's country as fallback. Without this, address-book entries
     // stored in national format (the default on most phones in
     // single-country regions) are silently skipped.
+    //
+    // Phone lives in `private_profiles` since migration 012 (P0-3),
+    // so we read via the dedicated [PublicProfileService.getMyPhone]
+    // helper instead of the now-public profile row.
     String? defaultDialCode;
-    final myProfile = await PublicProfileService.getMyProfile();
-    final myPhone = myProfile?['phone'] as String?;
+    final myPhone = await PublicProfileService.getMyPhone();
     if (myPhone != null && myPhone.isNotEmpty) {
       defaultDialCode = PhoneHasher.extractDialCode(myPhone);
     }
