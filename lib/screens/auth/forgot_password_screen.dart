@@ -55,11 +55,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Shrinks the form's vertical area by the keyboard height when
+    // open so Spacer compresses and the CTA rides above the keyboard.
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return ScreenBase(
       background: AppPalette.voidBg,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
+          padding: EdgeInsets.fromLTRB(28, 16, 28, 24 + keyboardInset),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

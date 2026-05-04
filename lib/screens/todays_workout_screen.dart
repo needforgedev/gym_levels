@@ -32,38 +32,45 @@ class TodaysWorkoutScreen extends StatefulWidget {
 }
 
 class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
-  late Future<_PlanBundle> _future;
-  final Map<int, PlannedExercise> _swaps = {};
+  SessionPlan? _plan;
+  Goal? _goal;
+  Workout? _doneToday;
+
+  // Working list is materialized once the plan loads, then mutated
+  // freely by swap / add / remove. All edits are in-memory only —
+  // they don't write back to the schedule (the next visit regenerates
+  // a fresh plan via PlanGenerator).
+  List<PlannedExercise> _exercises = [];
+  bool _editing = false;
   bool _rationaleOpen = false;
+  bool _loading = true;
+  bool _empty = false;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _load();
   }
 
-  Future<_PlanBundle> _load() async {
+  Future<void> _load() async {
     final results = await Future.wait([
       PlanGenerator.todaysSession(),
       GoalsService.get(),
       WorkoutService.finishedToday(),
     ]);
-    return _PlanBundle(
-      plan: results[0] as SessionPlan?,
-      goal: results[1] as Goal?,
-      doneToday: results[2] as Workout?,
-    );
+    if (!mounted) return;
+    final plan = results[0] as SessionPlan?;
+    setState(() {
+      _plan = plan;
+      _goal = results[1] as Goal?;
+      _doneToday = results[2] as Workout?;
+      _exercises = plan == null ? [] : List.of(plan.exercises);
+      _loading = false;
+      _empty = plan == null;
+    });
   }
 
-  List<PlannedExercise> _currentExercises(SessionPlan plan) {
-    final out = <PlannedExercise>[];
-    for (var i = 0; i < plan.exercises.length; i++) {
-      out.add(_swaps[i] ?? plan.exercises[i]);
-    }
-    return out;
-  }
-
-  Future<void> _openSwapSheet(int slot, PlannedExercise current) async {
+  Future<void> _openSwapSheet(int index, PlannedExercise current) async {
     final catalog = await ExerciseService.getAll();
     final currentEx = catalog.firstWhere(
       (e) => e.id == current.exerciseId,
@@ -90,7 +97,7 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
     );
     if (picked == null || picked.id == null) return;
     setState(() {
-      _swaps[slot] = PlannedExercise(
+      _exercises[index] = PlannedExercise(
         exerciseId: picked.id!,
         name: picked.name,
         sets: current.sets,
@@ -100,10 +107,50 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
     });
   }
 
-  void _startWorkout(List<PlannedExercise> exercises) {
-    if (exercises.isEmpty) return;
-    final first = exercises.first.exerciseId;
-    final rest = exercises.skip(1).map((e) => e.exerciseId).join(',');
+  Future<void> _openAddSheet() async {
+    final catalog = await ExerciseService.getAll();
+    final inSession = _exercises.map((e) => e.exerciseId).toSet();
+    // Don't show exercises already in the session — would just be a
+    // duplicate slot. User can re-add them after removing if needed.
+    final available = catalog
+        .where((e) => e.id != null && !inSession.contains(e.id))
+        .toList();
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<Exercise>(
+      context: context,
+      backgroundColor: AppPalette.bgCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _AddExerciseSheet(available: available),
+    );
+    if (picked == null || picked.id == null) return;
+    setState(() {
+      _exercises.add(PlannedExercise(
+        exerciseId: picked.id!,
+        name: picked.name,
+        sets: 3,
+        reps: 10,
+        isPriority: false,
+      ));
+    });
+  }
+
+  void _removeAt(int index) {
+    setState(() {
+      _exercises.removeAt(index);
+    });
+  }
+
+  void _toggleEdit() {
+    setState(() => _editing = !_editing);
+  }
+
+  void _startWorkout() {
+    if (_exercises.isEmpty) return;
+    final first = _exercises.first.exerciseId;
+    final rest = _exercises.skip(1).map((e) => e.exerciseId).join(',');
     final suffix = rest.isEmpty ? '' : '?queue=$rest';
     context.go('/workout/new/$first$suffix');
   }
@@ -111,27 +158,26 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
   @override
   Widget build(BuildContext context) {
     return ScreenBase(
-      child: FutureBuilder<_PlanBundle>(
-        future: _future,
-        builder: (ctx, snap) {
-          if (!snap.hasData) {
+      child: Builder(
+        builder: (ctx) {
+          if (_loading) {
             return const Center(
               child: CircularProgressIndicator(color: AppPalette.purple),
             );
           }
-          final bundle = snap.data!;
-          final plan = bundle.plan;
-          if (plan == null) {
-            return _NoScheduleEmpty(
-              onBack: () => context.go('/home'),
-            );
+          if (_empty) {
+            return _NoScheduleEmpty(onBack: () => context.go('/home'));
           }
-          final exercises = _currentExercises(plan);
-          final doneToday = bundle.doneToday;
+          final plan = _plan!;
+          final doneToday = _doneToday;
 
           return Column(
             children: [
-              _Header(onBack: () => context.go('/home')),
+              _Header(
+                onBack: () => context.go('/home'),
+                editing: _editing,
+                onEditToggle: doneToday == null ? _toggleEdit : null,
+              ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
@@ -147,30 +193,36 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
                         padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
                         child: _OptionalNotice(),
                       ),
-                    _TitleBlock(plan: plan),
-                    _VolumeSplit(plan: plan, goal: bundle.goal),
+                    _TitleBlock(plan: plan, exerciseCount: _exercises.length),
+                    _VolumeSplit(exercises: _exercises, goal: _goal),
                     _WhyExpander(
                       open: _rationaleOpen,
                       plan: plan,
-                      goal: bundle.goal,
+                      goal: _goal,
                       onToggle: () =>
                           setState(() => _rationaleOpen = !_rationaleOpen),
                     ),
                     _ExercisesSection(
-                      exercises: exercises,
+                      exercises: _exercises,
+                      editing: _editing,
                       onSwap: _openSwapSheet,
+                      onRemove: _removeAt,
+                      onAdd: _openAddSheet,
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                      child: doneToday != null
-                          ? _ViewSessionButton(
-                              onTap: () =>
-                                  context.go('/workouts/${doneToday.id}'),
-                            )
-                          : _StartButton(
-                              onTap: () => _startWorkout(exercises),
-                            ),
-                    ),
+                    if (!_editing)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                        child: doneToday != null
+                            ? _ViewSessionButton(
+                                onTap: () =>
+                                    context.go('/workouts/${doneToday.id}'),
+                              )
+                            : _StartButton(
+                                onTap: _exercises.isEmpty
+                                    ? null
+                                    : _startWorkout,
+                              ),
+                      ),
                   ],
                 ),
               ),
@@ -182,24 +234,27 @@ class _TodaysWorkoutScreenState extends State<TodaysWorkoutScreen> {
   }
 }
 
-class _PlanBundle {
-  const _PlanBundle({
-    required this.plan,
-    required this.goal,
-    required this.doneToday,
-  });
-  final SessionPlan? plan;
-  final Goal? goal;
-  final Workout? doneToday;
-}
-
 // ─── Header ────────────────────────────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.onBack});
+  const _Header({
+    required this.onBack,
+    required this.editing,
+    required this.onEditToggle,
+  });
+
   final VoidCallback onBack;
+  final bool editing;
+
+  /// Tappable Edit / Done CTA. Null when the user has already
+  /// completed today's session — editing is disabled at that point.
+  final VoidCallback? onEditToggle;
 
   @override
   Widget build(BuildContext context) {
+    final label = editing ? 'DONE' : 'EDIT';
+    final color = onEditToggle == null
+        ? AppPalette.textDisabled
+        : (editing ? AppPalette.amber : AppPalette.teal);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Row(
@@ -218,16 +273,23 @@ class _Header extends StatelessWidget {
               color: AppPalette.textPrimary,
             ),
           ),
-          SizedBox(
-            width: 38,
-            child: Center(
-              child: Text(
-                'EDIT',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: AppPalette.teal,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onEditToggle,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 60,
+                height: 38,
+                alignment: Alignment.center,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: color,
+                  ),
                 ),
               ),
             ),
@@ -276,8 +338,9 @@ class _IconCircle extends StatelessWidget {
 
 // ─── Title block ───────────────────────────────────────────
 class _TitleBlock extends StatelessWidget {
-  const _TitleBlock({required this.plan});
+  const _TitleBlock({required this.plan, required this.exerciseCount});
   final SessionPlan plan;
+  final int exerciseCount;
 
   @override
   Widget build(BuildContext context) {
@@ -304,7 +367,7 @@ class _TitleBlock extends StatelessWidget {
                 variant: AppPillVariant.ghost,
               ),
               AppPill(
-                label: '${plan.exercises.length} exercises',
+                label: '$exerciseCount exercises',
                 variant: AppPillVariant.ghost,
               ),
             ],
@@ -326,15 +389,15 @@ class _TitleBlock extends StatelessWidget {
 
 // ─── Volume split chips ────────────────────────────────────
 class _VolumeSplit extends StatelessWidget {
-  const _VolumeSplit({required this.plan, required this.goal});
-  final SessionPlan plan;
+  const _VolumeSplit({required this.exercises, required this.goal});
+  final List<PlannedExercise> exercises;
   final Goal? goal;
 
   // Simple muscle-percent estimate based on number of exercises hitting
-  // each primary muscle (the plan generator already orders by priority).
+  // each primary muscle. Reflects edits made via the EDIT button.
   Map<String, int> _split() {
     final counts = <String, int>{};
-    for (final e in plan.exercises) {
+    for (final e in exercises) {
       final m = _muscleFor(e.name);
       counts[m] = (counts[m] ?? 0) + 1;
     }
@@ -565,11 +628,17 @@ class _WhyExpander extends StatelessWidget {
 class _ExercisesSection extends StatelessWidget {
   const _ExercisesSection({
     required this.exercises,
+    required this.editing,
     required this.onSwap,
+    required this.onRemove,
+    required this.onAdd,
   });
 
   final List<PlannedExercise> exercises;
-  final void Function(int slot, PlannedExercise ex) onSwap;
+  final bool editing;
+  final void Function(int index, PlannedExercise ex) onSwap;
+  final void Function(int index) onRemove;
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -588,24 +657,93 @@ class _ExercisesSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
+          if (exercises.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                editing
+                    ? 'No exercises yet — tap ADD EXERCISE to build your session.'
+                    : 'No exercises in this session.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppPalette.textMuted,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           for (var i = 0; i < exercises.length; i++) ...[
             _ExerciseCard(
               exercise: exercises[i],
+              editing: editing,
               onSwap: () => onSwap(i, exercises[i]),
+              onRemove: () => onRemove(i),
             ),
             const SizedBox(height: 10),
           ],
+          if (editing) _AddExerciseRow(onTap: onAdd),
         ],
       ),
     );
   }
 }
 
+class _AddExerciseRow extends StatelessWidget {
+  const _AddExerciseRow({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: AppPalette.teal.withValues(alpha: 0.08),
+            border: Border.all(
+              color: AppPalette.teal.withValues(alpha: 0.40),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_circle_outline,
+                  size: 18, color: AppPalette.teal),
+              const SizedBox(width: 8),
+              Text(
+                'ADD EXERCISE',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: AppPalette.teal,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ExerciseCard extends StatelessWidget {
-  const _ExerciseCard({required this.exercise, required this.onSwap});
+  const _ExerciseCard({
+    required this.exercise,
+    required this.editing,
+    required this.onSwap,
+    required this.onRemove,
+  });
 
   final PlannedExercise exercise;
+  final bool editing;
   final VoidCallback onSwap;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -686,46 +824,88 @@ class _ExerciseCard extends StatelessWidget {
               ],
             ),
           ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onSwap,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: AppPalette.purple.withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: AppPalette.purple.withValues(alpha: 0.25),
-                    width: 1,
+          if (editing)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: AppPalette.danger.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: AppPalette.danger.withValues(alpha: 0.40),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.close,
+                        size: 12,
+                        color: AppPalette.danger,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'REMOVE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppPalette.danger,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.swap_horiz,
-                      size: 12,
-                      color: AppPalette.purpleSoft,
+              ),
+            )
+          else
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onSwap,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: AppPalette.purple.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: AppPalette.purple.withValues(alpha: 0.25),
+                      width: 1,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'SWAP',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.swap_horiz,
+                        size: 12,
                         color: AppPalette.purpleSoft,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'SWAP',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppPalette.purpleSoft,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -842,7 +1022,7 @@ class _NoScheduleEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _Header(onBack: onBack),
+        _Header(onBack: onBack, editing: false, onEditToggle: null),
         Expanded(
           child: Center(
             child: Padding(
@@ -897,10 +1077,14 @@ class _NoScheduleEmpty extends StatelessWidget {
 // ─── Bottom CTAs ───────────────────────────────────────────
 class _StartButton extends StatelessWidget {
   const _StartButton({required this.onTap});
-  final VoidCallback onTap;
+
+  /// Null disables the button (greyed-out look). Used when the user
+  /// has emptied the exercise list mid-edit.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -911,16 +1095,23 @@ class _StartButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF19E3E3), Color(0xFF0EC6C6)],
+            gradient: LinearGradient(
+              colors: disabled
+                  ? [
+                      AppPalette.teal.withValues(alpha: 0.35),
+                      AppPalette.teal.withValues(alpha: 0.25),
+                    ]
+                  : const [Color(0xFF19E3E3), Color(0xFF0EC6C6)],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppPalette.teal.withValues(alpha: 0.30),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            boxShadow: disabled
+                ? null
+                : [
+                    BoxShadow(
+                      color: AppPalette.teal.withValues(alpha: 0.30),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1076,6 +1267,193 @@ class _SwapSheet extends StatelessWidget {
               onTap: () => Navigator.of(context).pop(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Add-exercise sheet ───────────────────────────────────────
+//
+// Larger sheet than _SwapSheet because the user is browsing the full
+// catalog rather than 3 same-muscle alternates. Group by primary
+// muscle so it's scannable; defaults sets/reps to 3×10 on pick (the
+// caller can refine later in-session).
+
+class _AddExerciseSheet extends StatefulWidget {
+  const _AddExerciseSheet({required this.available});
+  final List<Exercise> available;
+
+  @override
+  State<_AddExerciseSheet> createState() => _AddExerciseSheetState();
+}
+
+class _AddExerciseSheetState extends State<_AddExerciseSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _query.isEmpty
+        ? widget.available
+        : widget.available
+            .where((e) =>
+                e.name.toLowerCase().contains(_query) ||
+                e.primaryMuscle.toLowerCase().contains(_query))
+            .toList();
+
+    final byMuscle = <String, List<Exercise>>{};
+    for (final e in filtered) {
+      byMuscle.putIfAbsent(e.primaryMuscle, () => []).add(e);
+    }
+    final groupKeys = byMuscle.keys.toList()..sort();
+
+    final sheetHeight = MediaQuery.of(context).size.height * 0.75;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SizedBox(
+          height: sheetHeight,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ADD EXERCISE',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                  color: AppPalette.teal,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Pick from the catalog',
+                style: AppType.displayMD(color: AppPalette.textPrimary),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                onChanged: (v) =>
+                    setState(() => _query = v.trim().toLowerCase()),
+                style: const TextStyle(color: AppPalette.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Search exercises or muscle…',
+                  hintStyle: const TextStyle(color: AppPalette.textDim),
+                  prefixIcon: Icon(Icons.search,
+                      size: 18, color: AppPalette.textMuted),
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppPalette.bgCard2,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No exercises match "$_query".',
+                          style: TextStyle(color: AppPalette.textMuted),
+                        ),
+                      )
+                    : ListView(
+                        children: [
+                          for (final muscle in groupKeys) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(2, 4, 2, 8),
+                              child: Text(
+                                muscle.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1,
+                                  color: AppPalette.purpleSoft,
+                                ),
+                              ),
+                            ),
+                            for (final e in byMuscle[muscle]!) ...[
+                              _AddSheetRow(
+                                exercise: e,
+                                onTap: () => Navigator.of(context).pop(e),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            const SizedBox(height: 8),
+                          ],
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 8),
+              SecondaryButton(
+                label: 'CANCEL',
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddSheetRow extends StatelessWidget {
+  const _AddSheetRow({required this.exercise, required this.onTap});
+  final Exercise exercise;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppPalette.bgCard2,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppPalette.borderViolet, width: 1),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppPalette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      exercise.equipment.isEmpty
+                          ? 'bodyweight'
+                          : exercise.equipment.join(' · '),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppPalette.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.add_circle_outline,
+                  size: 18, color: AppPalette.teal),
+            ],
+          ),
         ),
       ),
     );

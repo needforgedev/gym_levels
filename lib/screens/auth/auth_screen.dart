@@ -288,54 +288,68 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Bottom inset = keyboard height when open, 0 otherwise. We wrap
+    // the scroll view in an OUTER Padding so the viewport itself
+    // shrinks above the keyboard — Flutter's auto-scroll-to-focused
+    // -field then correctly places the focused TextField in the
+    // visible region. Putting the inset on the scroll view's inner
+    // `padding` doesn't help because the viewport stays full-screen
+    // and auto-scroll can land the field under the keyboard.
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return ScreenBase(
       background: AppPalette.voidBg,
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            children: [
-              _Hero(
-                mode: _mode,
-                onSwitchMode: _switchMode,
-                onBack: () => context.go('/'),
-              ),
-              _TaglineBanner(shimmer: _shimmer),
-              const SizedBox(height: 22),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 22),
-                child: _Form(
-                  isSignUp: _isSignUp,
-                  emailCtrl: _emailCtrl,
-                  passwordCtrl: _passwordCtrl,
-                  confirmCtrl: _confirmCtrl,
-                  usernameCtrl: _usernameCtrl,
-                  phoneCtrl: _phoneCtrl,
-                  showPw: _showPw,
-                  onTogglePw: () => setState(() => _showPw = !_showPw),
-                  agree: _agree,
-                  onToggleAgree: () => setState(() => _agree = !_agree),
-                  error: _error,
-                  loading: _loading,
-                  canSubmit: _canSubmit,
-                  onSubmit: _submit,
-                  shimmer: _shimmer,
-                  confirmValid: _confirmValid,
-                  usernameStatus: _usernameStatus,
-                  usernameError: _usernameRpcError,
-                  onUsernameChanged: _onUsernameChanged,
-                  country: _country,
-                  onOpenCountryPicker: _openCountryPicker,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: SingleChildScrollView(
+            // Dragging on the form dismisses the keyboard — quick way
+            // to peek at the tagline / CTA without tapping outside.
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              children: [
+                _Hero(
+                  mode: _mode,
+                  onSwitchMode: _switchMode,
+                  onBack: () => context.go('/'),
                 ),
-              ),
-              const SizedBox(height: 18),
-              if (!_isSignUp)
-                _SwitchAccountFooter(
-                  onForgot: () => context.go('/forgot-password'),
-                  onJoin: () => _switchMode(AuthMode.signUp),
+                _TaglineBanner(shimmer: _shimmer),
+                const SizedBox(height: 22),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  child: _Form(
+                    isSignUp: _isSignUp,
+                    emailCtrl: _emailCtrl,
+                    passwordCtrl: _passwordCtrl,
+                    confirmCtrl: _confirmCtrl,
+                    usernameCtrl: _usernameCtrl,
+                    phoneCtrl: _phoneCtrl,
+                    showPw: _showPw,
+                    onTogglePw: () => setState(() => _showPw = !_showPw),
+                    agree: _agree,
+                    onToggleAgree: () => setState(() => _agree = !_agree),
+                    error: _error,
+                    loading: _loading,
+                    canSubmit: _canSubmit,
+                    onSubmit: _submit,
+                    shimmer: _shimmer,
+                    confirmValid: _confirmValid,
+                    usernameStatus: _usernameStatus,
+                    usernameError: _usernameRpcError,
+                    onUsernameChanged: _onUsernameChanged,
+                    country: _country,
+                    onOpenCountryPicker: _openCountryPicker,
+                  ),
                 ),
-            ],
+                const SizedBox(height: 18),
+                if (!_isSignUp)
+                  _SwitchAccountFooter(
+                    onForgot: () => context.go('/forgot-password'),
+                    onJoin: () => _switchMode(AuthMode.signUp),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
